@@ -28,6 +28,14 @@ int main(int const argc, char **argv) {
     }
     std::string com{"COM"};
     int sum = 0;
+
+    // There is an O(n) algorithm to do this, but I was too lazy to implement it.
+    // Each value in the map should store the route length from that key to COM if known.
+    // Initially all such stored values are unknown.
+    // For each leaf, lookup should be performed until a known length is found, or to COM if none.
+    // Travelling backwards (using an auxiliary list) gives all the length on this path.
+    // Thus time is theta(2n). Space can be +theta(n) over the O(n^2) solution below.
+
     std::for_each(orbits.begin(), orbits.end(), [&sum, &orbits, &com](auto i){
       ++sum;
       auto j = orbits.find(i.first);

@@ -218,7 +218,7 @@ int main(int const argc, char **argv) {
     
     Intcode computer(in);
     computer.start();
-    computer.input(1);
+    computer.input(2);
     computer.run();
     while(computer.hasOutput()) {
       std::cout << computer.output() << '\n';

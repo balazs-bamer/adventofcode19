@@ -255,6 +255,7 @@ private:
   Intcode<tNumber> mComputer;
   std::map<std::pair<int, int>, int> mScreen;
   int mPaddleMin, mPaddleMax; // don't know how big the paddle is
+  int mBall;
 
 public:
   Player(std::ifstream &aIn) : mComputer(aIn) {
@@ -262,6 +263,7 @@ public:
     mComputer.poke(cQuarterSlot, tNumber(cFree));
     mComputer.run();
     draw();
+    mBall = findBall();
     mPaddleMin = std::numeric_limits<int>::max();
     mPaddleMax = std::numeric_limits<int>::min();
     for(auto &i : mScreen) {
@@ -282,19 +284,18 @@ public:
   int play() {
     int score = 0;
     while(!mComputer.run()) {
-      score = std::max<int>(score, draw());
-      int ball = findBall();
-      if(mPaddleMin > ball) {
+      score = std::max<int>(score, drawMinimal());
+      if(mPaddleMin > mBall) {
         --mPaddleMin;
         --mPaddleMax;
         mComputer.input(cLeft);
       }  
-      else if(mPaddleMax < ball) {
+      else if(mPaddleMax < mBall) {
         ++mPaddleMin;
         ++mPaddleMax;
         mComputer.input(cRight);
       }  
-      if(mPaddleMin > ball) {
+      if(mPaddleMin > mBall) {
         mComputer.input(cStay);
       }  
     }
@@ -318,8 +319,28 @@ private:
         else { // nothing to do
         }
       }
-      else {
+      else if(value == cBall || value == cPaddle) {
         mScreen[coordinates] = value;
+      }
+      else { // nothing to do
+      }
+    }
+    return score;
+  }
+ 
+  int drawMinimal() {
+    int score = 0;
+    while(mComputer.hasOutput()) {
+      int x = mComputer.output().toInt();
+      mComputer.output();
+      int value = mComputer.output().toInt();
+      if(x == cScore) {
+        score = std::max<int>(score, value);
+      }
+      else if(value == cBall) {
+        mBall = x;
+      }
+      else { // nothing to do
       }
     }
     return score;

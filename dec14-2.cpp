@@ -238,7 +238,7 @@ int main(int const argc, char **argv) {
     size_t result = reactor.calculateFuel();
     auto end = std::chrono::high_resolution_clock::now();
     auto timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin);
-    std::cout << "duration: " << timeSpan.count() << '\n';
+    std::cout << "duration: " << timeSpan.count() << '\n'; // 268.045
     std::cout << result << '\n';
   }
   catch(std::exception const &e) {

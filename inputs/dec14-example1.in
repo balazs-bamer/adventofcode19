@@ -1,0 +1,9 @@
+1 ORE => 2 A
+5 ORE => 3 B
+1 B => 2 C
+1 A, 3 B => 5 D
+5 A => 2 E
+1 C, 3 E => 1 FUEL
+3 D => 4 FUEL
+2 B => 5 E
+3 ORE => 1 C

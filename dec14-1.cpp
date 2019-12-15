@@ -10,6 +10,10 @@
 #include <stdexcept>
 #include <algorithm>
 
+// This is a solution for the general problem in which there are multiple possible reaction paths to turn ORE into FUEL.
+// The only restriction is the reactions may not form a cycle.
+// The problem presented as task input contained only one possible way for the production.
+
 typedef size_t Material;
 
 class Dictionary final {

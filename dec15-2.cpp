@@ -303,6 +303,7 @@ private:
   int   mParentDirection  = cNoParent;
   bool  mInitialized      = false;
   int   mDirectionCounter = 0;
+  bool  mFilled           = false;
 
 public:
   // for origin
@@ -325,6 +326,14 @@ public:
 
   bool setInitialized() noexcept {
     mInitialized = true;
+  }
+
+  bool isFilled() const noexcept {
+    return mFilled;
+  }
+
+  bool setFilled() noexcept {
+    mFilled = true;
   }
 
   int getParentDirection() const noexcept {
@@ -403,43 +412,32 @@ public:
     }
   }
 
-  int fill() {
-    int width = mLowerRight.x - mUpperLeft.x + 1u;
-    int height = mLowerRight.y - mUpperLeft.y + 1u;
-    std::vector<std::vector<int>> map(width);
-    for(int i = 0; i < width; ++i) {
-      map[i] = std::vector<int>(height, -2);
-    }
-    for(auto &i : mMap) {
-      map[i.first.x - mUpperLeft.x][i.first.y - mUpperLeft.y] = -1;
-    }
-    map[mOxygen.x - mUpperLeft.x][mOxygen.y - mUpperLeft.y] = 0;
-    size_t filled = 1u;
-    int time = 0;
-    while(filled < mMap.size()) {
-      for(int x = 0; x < width; ++x) {
-        for(int y = 0; y < height; ++y) {
-          if(map[x][y] == time) {
-            if(x > 0 && map[x - 1][y] == -1) {
-              map[x - 1][y] = time + 1;
-              ++filled;
+  size_t fill() {
+    size_t time = 0;
+    std::array<std::list<Coordinates>, 2u> lists;
+    mMap[mOxygen].setFilled();
+    lists[time % 2u].push_back(mOxygen);
+    while(!lists[time % 2u].empty()) {
+      bool spreaded = false;
+      while(!lists[time % 2u].empty()) {
+        Coordinates location = lists[time % 2u].front();
+        lists[time % 2u].pop_front();
+        for(int i = 0; i < Node::cDirectionCount; ++i) {
+          Coordinates newLocation = location + i;
+          auto found = mMap.find(newLocation);
+          if(found != mMap.end()) {
+            if(!found->second.isFilled()) {
+              found->second.setFilled();
+              lists[1u - time % 2u].push_back(newLocation);
+              spreaded = true;
             }
-            if(x < width - 1 && map[x + 1][y] == -1) {
-              map[x + 1][y] = time + 1;
-              ++filled;
-            }
-            if(y > 0 && map[x][y - 1] == -1) {
-              map[x][y - 1] = time + 1;
-              ++filled;
-            }
-            if(y < height - 1 && map[x][y + 1] == -1) {
-              map[x][y + 1] = time + 1;
-              ++filled;
-            }
+          }
+          else {
+            //nothing to do
           }
         }
       }
-      ++time;
+      time += (spreaded ? 1u : 0u);
     }
     return time;
   }

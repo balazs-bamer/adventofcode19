@@ -293,7 +293,6 @@ public:
           neighbours += (y > 0u && mMap[y - 1u][x] == cScaffold ? 1 : 0);
           neighbours += (y < mHeight - 1 && mMap[y + 1][x] == cScaffold ? 1 : 0);
           if(neighbours == 4) {
-  std::cout << x << ' ' << y << '\n';
             sum += x * y;
           }
           else { // nothing to do

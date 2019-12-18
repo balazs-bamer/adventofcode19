@@ -418,8 +418,8 @@ public:
         for(size_t found = 0u; found < mMaster->size(); ++found) {
           if(!mOccupied[found]) {
             Experiment newExperiment(*this, i, found, Next::cNew);
-            if(newExperiment.check()) {
-              aList.push_back(newExperiment);
+            if((result = examine(std::move(newExperiment), aList)).has_value()) {
+              return result;
             }
             else { // nothing to do
             }
@@ -432,15 +432,8 @@ public:
         for(size_t found = 0u; found <= mMaster->size() - mSubs[i].size(); ++found) { // look at each location if a sub can be matched
           if(mMaster->aligns(mSubs[i], found, mOccupied)) {
             Experiment newExperiment(*this, i, found, Next::cInsert);
-            if(newExperiment.check()) {
-              if(newExperiment.isReady()) {
-                result = std::move(newExperiment);
-                return result;
-                break;
-              }
-              else {
-                aList.push_back(newExperiment);
-              }
+            if((result = examine(std::move(newExperiment), aList)).has_value()) {
+              return result;
             }
             else { // nothing to do
             }
@@ -452,14 +445,30 @@ public:
       size_t pos = ref.start + mSubs[ref.reference].size();
       if(pos < mMaster->size() && !mOccupied[pos]) {
         Experiment newExperiment(*this, ref.reference, pos, Next::cExpand);
-        if(newExperiment.check()) {
-          aList.push_back(newExperiment);
+        if((result = examine(std::move(newExperiment), aList)).has_value()) {
+          return result;
         }
         else { // nothing to do
         }
       }
       else { // nothing to do
       }
+    }
+    return result;
+  }
+
+  std::optional<Experiment> examine(Experiment &&aExperiment, std::list<Experiment> &aList) {
+    std::optional<Experiment> result;
+    if(aExperiment.check()) {
+      if(aExperiment.isReady()) {
+        result = std::move(aExperiment);
+std::cout << "ready";
+      }
+      else {
+        aList.push_back(aExperiment);
+      }
+    }
+    else { // nothing to do
     }
     return result;
   }
@@ -709,6 +718,7 @@ public:
       Experiment experiment = list.front();
       list.pop_front();
       found = experiment.addChildren(list);
+std::cout << list.size() << '\n';
     }
     if(found) {
       sum = found->collectDust(mComputer);

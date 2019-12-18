@@ -297,20 +297,7 @@ public:
     return mPath[aAt];
   }
 
-  bool aligns(Path const &aOther, size_t const aOffset) const {
-    bool aligns = true;
-    for(size_t i = 0; i < aOther.size(); ++i) {
-      if(aOther.mPath[i] != mPath[i + aOffset]) {
-        aligns = false;
-        break;
-      }
-      else { // nothing to do
-      }
-    }
-    return aligns;
-  }
-
-  bool aligns(Path const &aOther, size_t const aOffset, std::deque<bool> const &aOccupied) const {
+  bool aligns(Path const &aOther, size_t const aOffset, std::vector<bool> const &aOccupied) const {
     bool aligns = true;
     for(size_t i = 0; i < aOther.size(); ++i) {
       if(aOther.mPath[i] != mPath[i + aOffset] || aOccupied[i + aOffset]) {
@@ -377,13 +364,13 @@ private:
   };
 
   Path const                 *mMaster;
-  std::deque<bool>            mOccupied;
+  std::vector<bool>           mOccupied;
   std::set<Reference>         mReferences;
   std::array<Path, cSubCount> mSubs;
   bool                        mBroken = true;
 
 public:
-  Experiment(Path const *aMaster) : mMaster(aMaster), mOccupied(std::deque<bool>(mMaster->size(), false)) {
+  Experiment(Path const *aMaster) : mMaster(aMaster), mOccupied(std::vector<bool>(mMaster->size(), false)) {
   }
 
   Experiment(Experiment const &aOther, size_t const aIndex, size_t const aMasterPos, Next const aTask) 
@@ -393,7 +380,7 @@ public:
   , mSubs(aOther.mSubs)
   , mBroken(false) {
     if(aTask == Next::cNew) {
-      addNewTask(aIndex, aMasterPos);
+      addNewPart(aIndex, aMasterPos);
     }
     else if(aTask == Next::cExpand) {
       expandSub(aIndex, aMasterPos);
@@ -496,22 +483,85 @@ std::cout << str;
       success = true;
     }
     else {
-      success = (!mBroken && (mReferences.size() * 2u - 1u <= Path::cMaxStringLength));
+      success = !mBroken;       // expand failed
+//if(!success) std::cout << 'b';
+      if(success && (mReferences.size() * 2u - 1u > Path::cMaxStringLength)) {  // too long main
+//std::cout << 'L';
+        success = false;
+      }
+      else { // nothing to do
+      } 
       if(success) {
-        for(auto &sub : mSubs) {
+        for(auto &sub : mSubs) {     // too long sub
           if(!sub.check()) {
+//std::cout << 'l';
             success = false;
+            break;
           }
           else { // nothing  to do
           }
         }
-        for(auto &ref : mReferences) {
-          if(!mMaster->aligns(mSubs[ref.reference], ref.start)) {
-            success = false;
-          }
-          else { // nothing  to do
+      }
+      else { // nothing to do
+      } 
+      size_t multiply = 1u;
+      for(auto &sub : mSubs) {
+        multiply *= sub.size();
+      }
+      if(multiply > 0u) {
+        if(success) {                // gaps beginning not matches subs
+          for(size_t i = 0u; i < mMaster->size(); ++i) {
+            if(!mOccupied[i] && (i == 0u || mOccupied[i - 1u])) {
+              size_t fails = 0u;
+              for(auto &sub : mSubs) {
+                if(i + sub.size() > mMaster->size() || !mMaster->aligns(sub, i, mOccupied)) {
+                  ++fails;
+                }
+                else { // nothing to do
+                }
+              }
+              if(fails == cSubCount) {
+                success = false;
+//  std::cout << '<';
+                break;
+              }
+              else { // nothing to do
+              }
+            }
+            else { // nothing to do
+            }
           }
         }
+        else { // nothing to do
+        } 
+        if(success) {                // gaps end not matches subs
+          for(size_t i = 0u; i < mMaster->size(); ++i) {
+            if(!mOccupied[i] && (i == mMaster->size() - 1u || mOccupied[i + 1u])) {
+              size_t fails = 0u;
+              for(auto &sub : mSubs) {
+                size_t start = (1u + i) - sub.size();
+                if(start > mMaster->size() || !mMaster->aligns(sub, start, mOccupied)) {
+                  ++fails;
+                }
+                else { // nothing to do
+                }
+              }
+              if(fails == cSubCount) {
+                success = false;
+//  std::cout << '>';
+                break;
+              }
+              else { // nothing to do
+              }
+            }
+            else { // nothing to do
+            }
+          }
+        }
+        else { // nothing to do
+        }
+      } 
+      else { // nothing to do
       }
     }
     return success;
@@ -527,7 +577,7 @@ std::cout << str;
     return covered == mMaster->size();
   }
 
-  void addNewTask(size_t const aIndex, size_t const aMasterPos) {
+  void addNewPart(size_t const aIndex, size_t const aMasterPos) {
     mSubs[aIndex] += mMaster->get(aMasterPos);
     Reference ref;
     ref.start = aMasterPos;
@@ -711,6 +761,7 @@ public:
 
   size_t collectDust() {
     size_t sum = 0;
+    size_t iterations = 0;
     std::list<Experiment> list;
     list.emplace_back(&mPath);
     std::optional<Experiment> found;
@@ -718,7 +769,11 @@ public:
       Experiment experiment = list.back();
       list.pop_back();
       found = experiment.addChildren(list);
+      ++iterations;
+if(iterations%100000u == 0u)
+std::cout<<iterations<<'\n';
     }
+    std::cout << "iterations: " << iterations << '\n';
     if(found) {
       sum = found->collectDust(mComputer);
     }

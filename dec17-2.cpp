@@ -715,10 +715,9 @@ public:
     list.emplace_back(&mPath);
     std::optional<Experiment> found;
     while(!found && !list.empty()) {
-      Experiment experiment = list.front();
-      list.pop_front();
+      Experiment experiment = list.back();
+      list.pop_back();
       found = experiment.addChildren(list);
-std::cout << list.size() << '\n';
     }
     if(found) {
       sum = found->collectDust(mComputer);

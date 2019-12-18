@@ -5,6 +5,7 @@
 #include <limits>
 #include <chrono>
 #include <cctype>
+#include <string>
 #include <vector>
 #include <fstream>
 #include <utility>
@@ -82,6 +83,12 @@ public:
 
   void input(int const aInput) noexcept {
     mInputs.push_back(aInput);
+  }
+
+  void input(std::string const &aInput) noexcept {
+    for(auto &i : aInput) {
+      mInputs.push_back(static_cast<int>(i));
+    }
   }
 
   tNumber output() {
@@ -274,12 +281,15 @@ public:
   static constexpr size_t cMaxStringLength = 20u;
 
 private:
+  static constexpr int cLeft      = 3;
+  static constexpr int cRight     = 1;
+  static constexpr int cCharLeft  = 'L';
+  static constexpr int cCharRight = 'R';
   std::deque<PathPart> mPath;
 
 public:
   Path& operator+=(PathPart const &aPart) {
     mPath.push_back(aPart);
-std::cout << aPart.turn << ' ' << aPart.length << '\n';
     return *this;
   }
 
@@ -329,6 +339,20 @@ std::cout << aPart.turn << ' ' << aPart.length << '\n';
   size_t size() const noexcept {
     return mPath.size();
   }
+  
+  std::string toString() const {
+    std::string result;
+    for(size_t i = 0u; i < mPath.size(); ++i) {
+      PathPart const &part = mPath[i];
+      result += (part.turn == cLeft ? cCharLeft : cCharRight);
+      result += ',';
+      result += std::to_string(part.length);
+      if(i < mPath.size() - 1u) {
+        result += ',';
+      }
+    }
+    return result;
+  }
 };
 
 struct Reference final {
@@ -346,6 +370,12 @@ public:
   static constexpr size_t cSubCount   = 3u; 
 
 private:
+  enum class Next : uint8_t {
+    cNew    = 0u,
+    cExpand = 1u,
+    cInsert = 2u
+  };
+
   Path const                 *mMaster;
   std::deque<bool>            mOccupied;
   std::set<Reference>         mReferences;
@@ -356,59 +386,99 @@ public:
   Experiment(Path const *aMaster) : mMaster(aMaster), mOccupied(std::deque<bool>(mMaster->size(), false)) {
   }
 
-  Experiment(Experiment const &aOther, size_t const aIndex) 
+  Experiment(Experiment const &aOther, size_t const aIndex, size_t const aMasterPos, Next const aTask) 
   : mMaster(aOther.mMaster)
   , mOccupied(aOther.mOccupied)
   , mReferences(aOther.mReferences)
   , mSubs(aOther.mSubs)
   , mBroken(false) {
-    size_t found = 0;
-    for(; found < mOccupied.size(); ++found) {
-      if(!mOccupied[found]) {
-        break;
-      }
+    if(aTask == Next::cNew) {
+      addNewTask(aIndex, aMasterPos);
     }
-    mSubs[aIndex] += mMaster->get(found);
-std::cout << "sub: " << aIndex << ' ' << mMaster->get(found).turn << ' ' << mMaster->get(found).length << '\n';
-  }
-
-  Experiment(Experiment const &aOther, size_t const aIndex, size_t const aAt) 
-  : mMaster(aOther.mMaster)
-  , mOccupied(aOther.mOccupied)
-  , mReferences(aOther.mReferences)
-  , mSubs(aOther.mSubs)
-  , mBroken(false) {
-    if(aIndex >= cSubCount) {
-      Reference ref;
-      ref.start = aAt;
-      ref.reference = aIndex - cSubCount;
-std::cout << "ref: " << ref.reference<< ' ' << aAt << '\n';
-      mReferences.insert(ref);
-      for(size_t i = 0u; i < mSubs[ref.reference].size(); ++i) {
-        mOccupied[i + aAt] = true;
-      } 
+    else if(aTask == Next::cExpand) {
+      expandSub(aIndex, aMasterPos);
     }
-    else {
-      PathPart part = mMaster->get(aAt);
-      for(auto &i : mReferences) {
-        size_t pos = i.start + mSubs[aIndex].size();
-        if(pos >= mMaster->size() || mOccupied[pos] || mMaster->get(pos) != part) {
-          mBroken = true;
-          break;
-        }
-      }
-      mSubs[aIndex] += part;
+    else if(aTask == Next::cInsert) {
+      insertSub(aIndex, aMasterPos);
+    }
+    else { // nothing to do
     }
   }
-
+  
   Experiment(Experiment&&) = default;
   Experiment(Experiment const&) = default;
 
   Experiment &operator=(Experiment const&) = default;
   Experiment &operator=(Experiment &&) = default;
 
-  bool isBroken() const noexcept {
-    return mBroken;
+  std::optional<Experiment> addChildren(std::list<Experiment> &aList) {
+    std::optional<Experiment> result;
+    for(size_t i = 0u; i < cSubCount; ++i) {
+      if(mSubs[i].size() == 0u) {            // try a new path part for the empty sub
+        for(size_t found = 0u; found < mMaster->size(); ++found) {
+          if(!mOccupied[found]) {
+            Experiment newExperiment(*this, i, found, Next::cNew);
+            if(newExperiment.check()) {
+              aList.push_back(newExperiment);
+            }
+            else { // nothing to do
+            }
+          }
+          else { // nothing to do
+          }
+        }
+      }
+      else {
+        for(size_t found = 0u; found <= mMaster->size() - mSubs[i].size(); ++found) { // look at each location if a sub can be matched
+          if(mMaster->aligns(mSubs[i], found, mOccupied)) {
+            Experiment newExperiment(*this, i, found, Next::cInsert);
+            if(newExperiment.check()) {
+              if(newExperiment.isReady()) {
+                result = std::move(newExperiment);
+                return result;
+                break;
+              }
+              else {
+                aList.push_back(newExperiment);
+              }
+            }
+            else { // nothing to do
+            }
+          }
+        }
+      } 
+    }
+    for(auto &ref : mReferences) {    // look at each referenced sub if they can be expanded
+      size_t pos = ref.start + mSubs[ref.reference].size();
+      if(pos < mMaster->size() && !mOccupied[pos]) {
+        Experiment newExperiment(*this, ref.reference, pos, Next::cExpand);
+        if(newExperiment.check()) {
+          aList.push_back(newExperiment);
+        }
+        else { // nothing to do
+        }
+      }
+      else { // nothing to do
+      }
+    }
+    return result;
+  }
+
+  int collectDust(Intcode<Int> &aComputer) const {
+    aComputer.start();
+    aComputer.poke(0u, 2);
+    std::string main = references2string();
+    main += static_cast<char>(10);
+std::cout << '\n' << main;
+    aComputer.input(main);
+    for(auto &sub : mSubs) {
+      std::string str = sub.toString();
+      str += static_cast<char>(10);
+std::cout << str;
+      aComputer.input(str);
+    }
+    aComputer.run();
+    return aComputer.output().toInt();
   }
 
   bool check() const {
@@ -417,19 +487,21 @@ std::cout << "ref: " << ref.reference<< ' ' << aAt << '\n';
       success = true;
     }
     else {
-      bool success = !mBroken && (mReferences.size() * 2u - 1u <= Path::cMaxStringLength);
-      for(auto &sub : mSubs) {
-        if(!sub.check()) {
-          success = false;
+      success = (!mBroken && (mReferences.size() * 2u - 1u <= Path::cMaxStringLength));
+      if(success) {
+        for(auto &sub : mSubs) {
+          if(!sub.check()) {
+            success = false;
+          }
+          else { // nothing  to do
+          }
         }
-        else { // nothing  to do
-        }
-      }
-      for(auto &ref : mReferences) {
-        if(!mMaster->aligns(mSubs[ref.reference], ref.start)) {
-          success = false;
-        }
-        else { // nothing  to do
+        for(auto &ref : mReferences) {
+          if(!mMaster->aligns(mSubs[ref.reference], ref.start)) {
+            success = false;
+          }
+          else { // nothing  to do
+          }
         }
       }
     }
@@ -443,52 +515,56 @@ std::cout << "ref: " << ref.reference<< ' ' << aAt << '\n';
     for(auto &ref : mReferences) {
       covered += mSubs[ref.reference].size();
     }
-    return covered = mMaster->size();
+    return covered == mMaster->size();
   }
 
-  std::optional<Experiment> addChildren(std::list<Experiment> &aList) {
-    std::optional<Experiment> result;
-    for(size_t i = 0u; i < cSubCount; ++i) {
-      if(mSubs[i].size() == 0u) {
-        Experiment newExperiment(*this, i);
-        if(newExperiment.check()) {
-          aList.push_back(newExperiment);
+  void addNewTask(size_t const aIndex, size_t const aMasterPos) {
+    mSubs[aIndex] += mMaster->get(aMasterPos);
+    Reference ref;
+    ref.start = aMasterPos;
+    ref.reference = aIndex;
+    mReferences.insert(ref);
+    mOccupied[aMasterPos] = true;
+  }
+ 
+  void expandSub(size_t const aIndex, size_t const aMasterPos) {
+    PathPart part = mMaster->get(aMasterPos);
+    for(auto &ref : mReferences) {
+      if(aIndex == ref.reference) {
+        size_t pos = ref.start + mSubs[aIndex].size();
+        if(pos >= mMaster->size() || mOccupied[pos] || mMaster->get(pos) != part) {
+          mBroken = true;
+          break;
         }
-        else { // nothing to do
+        else {
+          mOccupied[pos] = true;
         }
       }
-      else {
-        for(auto &ref : mReferences) {
-          size_t pos = ref.start + mSubs[i].size();
-          if(ref.reference == i && pos < mMaster->size() && !mOccupied[pos]) {
-            Experiment newExperiment(*this, i, pos);
-            if(newExperiment.check()) {
-              aList.push_back(newExperiment);
-            }
-            else { // nothing to do
-            }
-          }
-        }
+      else { // nothing to do
       }
     }
-    for(size_t i = 0u;  i < cSubCount && mSubs[i].size() > 0u; ++i) {
-      for(size_t found = 0u; found <= mMaster->size() - mSubs[i].size(); ++found) {
-        if(mMaster->aligns(mSubs[i], found, mOccupied)) {
-          Experiment newExperiment(*this, i + cSubCount, found);
-          if(newExperiment.check()) {
-            if(newExperiment.isReady()) {
-              result = std::move(newExperiment);
-              return result;
-              break;
-            }
-            else {
-              aList.push_back(newExperiment);
-            }
-          }
-          else { // nothing to do
-          }
-        }
-      } 
+    mSubs[aIndex] += part;
+  }
+  
+  void insertSub(size_t const aIndex, size_t const aMasterPos) {
+    Reference ref;
+    ref.start = aMasterPos;
+    ref.reference = aIndex;
+    mReferences.insert(ref);
+    for(size_t i = 0u; i < mSubs[aIndex].size(); ++i) {
+      mOccupied[i + aMasterPos] = true;
+    } 
+  }
+
+  std::string references2string() const {
+    std::string result;
+    size_t i = 0u;
+    for(auto &ref : mReferences) {
+      ++i;
+      result += ref.reference + 'A';
+      if(i < mReferences.size()) {
+        result += ',';
+      }
     }
     return result;
   }
@@ -532,12 +608,10 @@ public:
     bool newline = true;
     int x = 0;
     int y = 1;
-std::cout << "....";
     while(mComputer.hasOutput()) {
       if(newline) {
         mMap.push_back(std::deque<int>());
         mMap.back().push_back(cSpace);
-std::cout << "\n.";
         x = 1;
         ++mHeight;
         newline = false;
@@ -547,12 +621,10 @@ std::cout << "\n.";
       int input = mComputer.output();
       if(input == cNewline) {
         mMap.back().push_back(cSpace);
-std::cout << ".";
         ++y;
         newline = true;
       }
       else {
-std::cout << static_cast<char>(input);
         if(input == cCharUp) {
           mRobotStartDir = cUp;
           input = cScaffold;
@@ -586,7 +658,7 @@ std::cout << static_cast<char>(input);
         mWidth = std::max<int>(mWidth, mMap.back().size());
       }
     }
-    if(mMap.back().empty()) {
+    if(mMap.back().size() <= 2u) {
       mMap.pop_back();
       --mHeight;
     }
@@ -596,26 +668,6 @@ std::cout << static_cast<char>(input);
     mHeight += 2u;
     mMap.push_front(std::deque<int>(mWidth, cSpace));
     mMap.push_back(std::deque<int>(mWidth, cSpace));
-
-size_t sum = 0;
-/*    for(size_t y = 0u; y < mHeight; ++y) {
-      for(size_t x = 0u; x < mWidth; ++x) {
-        if(mMap[y][x] == cScaffold) {
-          int neighbours = (mMap[y][x - 1u] == cScaffold ? 1 : 0);
-          neighbours += (mMap[y][x + 1] == cScaffold ? 1 : 0);
-          neighbours += (mMap[y - 1u][x] == cScaffold ? 1 : 0);
-          neighbours += (mMap[y + 1][x] == cScaffold ? 1 : 0);
-          if(neighbours == 4) {
-            sum += (x-1) * (y-1);
-          }
-          else { // nothing to do
-          }
-        }
-        else { // nothing to do
-        }
-      }
-    }*/
-std::cout << "\n" << sum << ' ' << mRobotStartX << ' ' << mRobotStartY << '\n';;
   }
 
   void surveyPath() {
@@ -648,7 +700,7 @@ std::cout << "\n" << sum << ' ' << mRobotStartX << ' ' << mRobotStartY << '\n';;
     }while(true);
   }
 
-  size_t collectDust() const {
+  size_t collectDust() {
     size_t sum = 0;
     std::list<Experiment> list;
     list.emplace_back(&mPath);
@@ -657,16 +709,16 @@ std::cout << "\n" << sum << ' ' << mRobotStartX << ' ' << mRobotStartY << '\n';;
       Experiment experiment = list.front();
       list.pop_front();
       found = experiment.addChildren(list);
-std::cout << "l: " << list.size() << '\n';
     }
     if(found) {
-std::cout << "f\n";
+      sum = found->collectDust(mComputer);
+    }
+    else { // nothing to do
     }
     return sum;
   }
 
 private:
-  
   int getOppositeDir(int const aDir) const noexcept {
     return (aDir + 2) % cDirCount;
   }
@@ -716,7 +768,7 @@ int main(int const argc, char **argv) {
     auto begin = std::chrono::high_resolution_clock::now();
     labyrinth.readScaffold();
     labyrinth.surveyPath();
-    size_t dust = labyrinth.collectDust();
+    int dust = labyrinth.collectDust();
     auto end = std::chrono::high_resolution_clock::now();
     auto timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin);
     std::cout << "duration: " << timeSpan.count() << '\n';

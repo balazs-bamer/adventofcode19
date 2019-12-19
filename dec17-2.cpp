@@ -410,6 +410,7 @@ public:
             }
             else { // nothing to do
             }
+            break;
           }
           else { // nothing to do
           }
@@ -424,6 +425,9 @@ public:
             }
             else { // nothing to do
             }
+            break;
+          }
+          else { // nothing to do
           }
         }
       } 
@@ -437,6 +441,7 @@ public:
         }
         else { // nothing to do
         }
+        break;
       }
       else { // nothing to do
       }
@@ -449,7 +454,6 @@ public:
     if(aExperiment.check()) {
       if(aExperiment.isReady()) {
         result = std::move(aExperiment);
-std::cout << "ready";
       }
       else {
         aList.push_back(aExperiment);
@@ -473,8 +477,14 @@ std::cout << '\n' << main;
 std::cout << str;
       aComputer.input(str);
     }
+    aComputer.input('n');
+    aComputer.input(10);
     aComputer.run();
-    return aComputer.output().toInt();
+    int result;
+    do {
+      result = aComputer.output().toInt();
+    } while(result <= 'v');
+    return result;
   }
 
   bool check() const {
@@ -484,9 +494,7 @@ std::cout << str;
     }
     else {
       success = !mBroken;       // expand failed
-//if(!success) std::cout << 'b';
       if(success && (mReferences.size() * 2u - 1u > Path::cMaxStringLength)) {  // too long main
-//std::cout << 'L';
         success = false;
       }
       else { // nothing to do
@@ -494,7 +502,6 @@ std::cout << str;
       if(success) {
         for(auto &sub : mSubs) {     // too long sub
           if(!sub.check()) {
-//std::cout << 'l';
             success = false;
             break;
           }
@@ -504,65 +511,6 @@ std::cout << str;
       }
       else { // nothing to do
       } 
-      size_t multiply = 1u;
-      for(auto &sub : mSubs) {
-        multiply *= sub.size();
-      }
-      if(multiply > 0u) {
-        if(success) {                // gaps beginning not matches subs
-          for(size_t i = 0u; i < mMaster->size(); ++i) {
-            if(!mOccupied[i] && (i == 0u || mOccupied[i - 1u])) {
-              size_t fails = 0u;
-              for(auto &sub : mSubs) {
-                if(i + sub.size() > mMaster->size() || !mMaster->aligns(sub, i, mOccupied)) {
-                  ++fails;
-                }
-                else { // nothing to do
-                }
-              }
-              if(fails == cSubCount) {
-                success = false;
-//  std::cout << '<';
-                break;
-              }
-              else { // nothing to do
-              }
-            }
-            else { // nothing to do
-            }
-          }
-        }
-        else { // nothing to do
-        } 
-        if(success) {                // gaps end not matches subs
-          for(size_t i = 0u; i < mMaster->size(); ++i) {
-            if(!mOccupied[i] && (i == mMaster->size() - 1u || mOccupied[i + 1u])) {
-              size_t fails = 0u;
-              for(auto &sub : mSubs) {
-                size_t start = (1u + i) - sub.size();
-                if(start > mMaster->size() || !mMaster->aligns(sub, start, mOccupied)) {
-                  ++fails;
-                }
-                else { // nothing to do
-                }
-              }
-              if(fails == cSubCount) {
-                success = false;
-//  std::cout << '>';
-                break;
-              }
-              else { // nothing to do
-              }
-            }
-            else { // nothing to do
-            }
-          }
-        }
-        else { // nothing to do
-        }
-      } 
-      else { // nothing to do
-      }
     }
     return success;
   }
@@ -770,8 +718,6 @@ public:
       list.pop_back();
       found = experiment.addChildren(list);
       ++iterations;
-if(iterations%100000u == 0u)
-std::cout<<iterations<<'\n';
     }
     std::cout << "iterations: " << iterations << '\n';
     if(found) {

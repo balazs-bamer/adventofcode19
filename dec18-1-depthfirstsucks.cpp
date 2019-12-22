@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <unordered_map>
 
-// Depth first search to save memory, but it fails because of the clearance arond @
+// Depth first search to make distance matrix generation faster, but it fails because of the clearance arond @
 
 class Coordinates final {
 private:

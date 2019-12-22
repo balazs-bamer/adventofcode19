@@ -227,6 +227,15 @@ for(char c = 0; c < 64; ++c) {
   if(stack[pointer].choices[c]) std::cout << static_cast<char>(c + 64);
 }
 std::cout << ' ' << static_cast<char>(stack[pointer].previous+64) << '|' <<pointer << ' ';
+      if(std::count(stack[pointer].choices.begin(), stack[pointer].choices.end(), true) == 0u) { // end of recursion
+        result = std::min<size_t>(result, stack[pointer].lengthSoFar);
+std::cout << "- result: " << result << ' ';
+for(int i = 0; i <= pointer; ++i) std::cout << static_cast<char>(stack[i].previous + 64);
+std::cout << '\n';
+        --pointer;
+      }
+      else { // nothing to do
+      }
       while(stack[pointer].next != mDistances[stack[pointer].previous].end() && !stack[pointer].choices[stack[pointer].next->second]) {
 std::cout << '<'<<static_cast<char>(stack[pointer].next->second+64)<<'>';
         stack[pointer].next++;
@@ -245,27 +254,20 @@ std::cout << "0 worse: " << newLength << ' ' << result << '\n';;
         continue;
       }
       else {
-        if(std::count(stack[pointer].choices.begin(), stack[pointer].choices.end(), true) == 1u) { // end of recursion
-          result = newLength;
-std::cout << "- better: " << result << '\n';;
-          --pointer;
-        }
-        else {
-          char previous = stack[pointer].next->second;
-          stack[pointer].next++;
+        char previous = stack[pointer].next->second;
+        stack[pointer].next++;
 std::cout << "+ " << static_cast<char>(previous + 64) << '\n';
-          ++pointer;
-          stack[pointer].previous = previous;
-          stack[pointer].lengthSoFar = newLength;
-          stack[pointer].choices = stack[pointer - 1u].choices;
-          stack[pointer].next = mDistances[previous].begin();
-          stack[pointer].choices[previous] = false;
-          if(previous >= cCompactKeyStart) {
-            size_t door = previous - cCompactDoor2key;
-            stack[pointer].choices[door] = mDoors[door];
-          }
-          else { // nothinmg to do
-          }
+        ++pointer;
+        stack[pointer].previous = previous;
+        stack[pointer].lengthSoFar = newLength;
+        stack[pointer].choices = stack[pointer - 1u].choices;
+        stack[pointer].next = mDistances[previous].begin();
+        stack[pointer].choices[previous] = false;
+        if(previous >= cCompactKeyStart) {
+          size_t door = previous - cCompactDoor2key;
+          stack[pointer].choices[door] = mDoors[door];
+        }
+        else { // nothinmg to do
         }
       }
     }

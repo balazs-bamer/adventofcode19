@@ -223,25 +223,16 @@ std::cout << i.first << ' ' << j.first << ' ' << distance << '\n';
     stack[0u].choices = mKeys;
     stack[0u].next = mDistances[cCompactStart].begin();
     while(stack[0u].next != mDistances[cCompactStart].end()) {
-for(char c = 0; c < 64; ++c) {
-  if(stack[pointer].choices[c]) std::cout << static_cast<char>(c + 64);
-}
-std::cout << ' ' << static_cast<char>(stack[pointer].previous+64) << '|' <<pointer << ' ';
       if(std::count(stack[pointer].choices.begin(), stack[pointer].choices.end(), true) == 0u) { // end of recursion
         result = std::min<size_t>(result, stack[pointer].lengthSoFar);
-std::cout << "- result: " << result << ' ';
-for(int i = 0; i <= pointer; ++i) std::cout << static_cast<char>(stack[i].previous + 64);
-std::cout << '\n';
         --pointer;
       }
       else { // nothing to do
       }
       while(stack[pointer].next != mDistances[stack[pointer].previous].end() && !stack[pointer].choices[stack[pointer].next->second]) {
-std::cout << '<'<<static_cast<char>(stack[pointer].next->second+64)<<'>';
         stack[pointer].next++;
       }
       if(stack[pointer].next == mDistances[stack[pointer].previous].end()) { // ran out of choices on this level
-std::cout << "- no choice\n";
         --pointer;
         continue;
       }
@@ -249,14 +240,12 @@ std::cout << "- no choice\n";
       }
       size_t newLength = stack[pointer].lengthSoFar + stack[pointer].next->first;
       if(result <= newLength) { // this branch is definitely not better
-std::cout << "0 worse: " << newLength << ' ' << result << '\n';;
         stack[pointer].next++;
         continue;
       }
       else {
         char previous = stack[pointer].next->second;
         stack[pointer].next++;
-std::cout << "+ " << static_cast<char>(previous + 64) << '\n';
         ++pointer;
         stack[pointer].previous = previous;
         stack[pointer].lengthSoFar = newLength;

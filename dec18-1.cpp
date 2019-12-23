@@ -1,5 +1,4 @@
 #include <map>
-#include <set>
 #include <list>
 #include <deque>
 #include <cmath>
@@ -76,6 +75,7 @@ struct Iteration final {
   char                                  previous;
   size_t                                lengthSoFar = 0u;
   std::array<bool, cMatrixSize>         choices;
+  std::array<bool, cMatrixSize>         visited;
   std::multimap<char, size_t>::iterator next;
 };
 
@@ -206,18 +206,27 @@ std::cout << 'x' << mStartX << 'y' << mStartY << '\n';*/
       mDoors[shiftedI] = (shiftedI >= cCompactDoorStart && shiftedI < cCompactDoorEnd);
       for(auto &j : mLocations) {
         char shiftedJ = j.first - cCompactOffset;
-        std::set<char> visited;
+        std::deque<char> visitedForward;
+        std::deque<char> visitedBackward;
         Coordinates locI = i.second;
         Coordinates locJ = j.second;
-        size_t headI = gatherHead(locI, mDistanceMap[locJ.getY()][locJ.getX()], visited);
-        size_t headJ = gatherHead(locJ, mDistanceMap[locI.getY()][locI.getX()], visited);
-        size_t distance = headI + headJ + gatherTogether(locI, locJ, visited);
-        char compactX = j.first - cCompactOffset;
-        char compactY = i.first - cCompactOffset;
+        size_t headI = gatherHead(locI, mDistanceMap[locJ.getY()][locJ.getX()], visitedForward);
+        size_t headJ = gatherHead(locJ, mDistanceMap[locI.getY()][locI.getX()], visitedBackward);
+        size_t distance = headI + headJ + gatherTogether(locI, locJ, visitedForward, visitedBackward);
+        char compactX = j.first - cCompactOffset;  // to
+        char compactY = i.first - cCompactOffset;  // from
         mDistances[compactY].emplace(distance, compactX);
+                                               // from      to
         auto &visitedLetters = mVisitedLetters[compactY][compactX];
-        visitedLetters.reserve(visited.size());
-        std::for_each(visited.rbegin(), visited.rend(), [&visitedLetters, shiftedI, shiftedJ](auto i){
+        visitedLetters.reserve(visitedForward.size() + visitedBackward.size());
+        std::for_each(visitedForward.begin(), visitedForward.end(), [&visitedLetters, shiftedI, shiftedJ](auto i){
+          if(i != shiftedI && i != shiftedJ) {
+            visitedLetters.push_back(i);
+          }
+          else { // nothing to do
+          }
+        });
+        std::for_each(visitedBackward.rbegin(), visitedBackward.rend(), [&visitedLetters, shiftedI, shiftedJ](auto i){
           if(i != shiftedI && i != shiftedJ) {
             visitedLetters.push_back(i);
           }
@@ -238,14 +247,20 @@ std::cout << '\n';*/
     size_t result = std::numeric_limits<size_t>::max();
     size_t pointer = 0u;
     std::array<Iteration, cRecursionDepth> stack;
-    stack[0u].previous = cCompactStart;
-    stack[0u].lengthSoFar = 0u;
-    stack[0u].choices = mKeys;
-    stack[0u].next = mDistances[cCompactStart].begin();
-    while(stack[0u].next != mDistances[cCompactStart].end()) {
+    auto &bottom = stack[0u];
+    bottom.previous = cCompactStart;
+    bottom.lengthSoFar = 0u;
+    bottom.choices = mKeys;
+    std::fill(bottom.visited.begin(), bottom.visited.end(), false);
+    bottom.visited[cCompactStart] = true;
+    bottom.next = mDistances[cCompactStart].begin();
+    while(bottom.next != mDistances[cCompactStart].end()) {
       auto &current = stack[pointer];
       if(std::count(current.choices.begin(), current.choices.end(), true) == 0u) { // end of recursion
         result = std::min<size_t>(result, current.lengthSoFar);
+std::cout << "- result: " << result << ' ';
+for(int i = 0; i <= pointer; ++i) std::cout << static_cast<char>(stack[i].previous + 64);
+std::cout << '\n';
         --pointer;
         ++iterations;
       }
@@ -275,14 +290,17 @@ std::cout << '\n';*/
         auto &next = stack[pointer];
         next.previous = previous;
         next.lengthSoFar = newLength;
-        next.choices = current.choices;
         next.next = mDistances[previous].begin();
+        next.choices = current.choices;
+        next.visited = current.visited;
+        next.visited[previous] = true;
         next.choices[previous] = false;
         for(auto &i : mVisitedLetters[prePrevious][previous]) {
+          next.visited[i] = (next.visited[i] || next.choices[i]);
           next.choices[i] = false;
           if(i >= cCompactKeyStart) {
             char door = i - cCompactDoor2key;
-            next.choices[door] = mDoors[door];
+            next.choices[door] = mDoors[door] & !next.visited[door];
           }
         }
         if(previous >= cCompactKeyStart) {
@@ -299,7 +317,7 @@ std::cout << "iterations: " << iterations << '\n';
   }
 
 private:
-  size_t gatherHead(Coordinates &aHead, size_t const aOtherDistance, std::set<char> &aVisited) const {
+  size_t gatherHead(Coordinates &aHead, size_t const aOtherDistance, std::deque<char> &aVisited) const {
     size_t result = 0u;
     size_t now = mDistanceMap[aHead.getY()][aHead.getX()];
     while(now > aOtherDistance) {
@@ -310,21 +328,21 @@ private:
     return result;
   }
 
-  size_t gatherTogether(Coordinates const aLoc1, Coordinates const aLoc2, std::set<char> &aVisited) const {
+  size_t gatherTogether(Coordinates const aLoc1, Coordinates const aLoc2, std::deque<char> &aVisited1, std::deque<char> &aVisited2) const {
     Coordinates loc1 = aLoc1;
     Coordinates loc2 = aLoc2;
     size_t result = 0u;
     size_t target = mDistanceMap[loc1.getY()][loc1.getX()];
     while(loc1 != loc2) {
       --target;
-      step(loc1, target, aVisited);
-      step(loc2, target, aVisited);
+      step(loc1, target, aVisited1);
+      step(loc2, target, aVisited2);
       result += 2u;
     }
     return result;
   }
 
-  void step(Coordinates &aHead, size_t const aTarget, std::set<char> &aVisited) const {
+  void step(Coordinates &aHead, size_t const aTarget, std::deque<char> &aVisited) const {
     Coordinates look;
     for(int i = 0u; i < cDirCount; ++i) {
       look = aHead + i;
@@ -337,7 +355,7 @@ private:
     aHead = look;
     char what = mMap[aHead.getY()][aHead.getX()];
     if(what != cCorridor) {
-      aVisited.insert(what - cCompactOffset);
+      aVisited.push_back(what - cCompactOffset);
     }
     else { // nothing to do
     }

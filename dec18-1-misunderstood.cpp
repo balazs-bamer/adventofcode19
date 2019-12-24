@@ -68,64 +68,26 @@ struct std::hash<Coordinates> {
     return std::hash<int>{}(aKey.getX()) ^ (std::hash<int>{}(aKey.getY()) << 1u);
   }
 };
-  
-size_t constexpr cMatrixSize = 64u;
-
-typedef std::array<bool, cMatrixSize> BoolArray;
 
 struct Iteration final {
-  static char   constexpr cCompactOffset    = '@';
-  static char   constexpr cCompactKeyStart  = 'a' - cCompactOffset;
-  static char   constexpr cCompactDoor2key  = 'a' - 'A';
+  static size_t constexpr cMatrixSize = 64u;
+
   char                                  previous;
   size_t                                lengthSoFar = 0u;
-  BoolArray                             was;
-  BoolArray                             choices;
-  BoolArray                             keysCollected;
+  std::array<bool, cMatrixSize>         choices;
+  std::array<bool, cMatrixSize>         visited;
   std::multimap<char, size_t>::iterator next;
-
-  bool update(char const aWhat, BoolArray const &aDoors, std::array<std::vector<char>, cMatrixSize> const &aLocks) {
-    bool result = true;
-    choices[aWhat] = false;
-    was[aWhat] = true;
-    if(aWhat >= cCompactKeyStart) {
-      char door = aWhat - cCompactDoor2key;
-      choices[door] = aDoors[door];
-      keysCollected[aWhat] = true;
-    }
-    else {
-      for(auto i : aLocks[aWhat]) {
-        if(!was[i]) {
-          if(i >= cCompactKeyStart) {
-            choices[i] = true;
-          }
-          else {
-            if(keysCollected[i + cCompactDoor2key]) {
-              choices[i] = true;
-            }
-            else { // nothing to do
-              result = false;
-            }
-          }
-        }
-        else { // nothoing to do
-        }
-      }
-    }
-    return result;
-  }
 };
 
 class Labyrinth final {
 private:
-  static char   constexpr cNewLine          = '\n';
   static char   constexpr cStart            = '@';
   static char   constexpr cCorridor         = '.';
   static char   constexpr cWall             = '#';
+  static char   constexpr cNewLine          = '\n';
   static int    constexpr cDirCount         =  4;
+  static size_t constexpr cMatrixSize       = Iteration::cMatrixSize;
   static char   constexpr cCompactOffset    = '@';
-  static char   constexpr cCompactCorridor  = '^';
-  static char   constexpr cCompactWall      = '[';
   static char   constexpr cCompactStart     =  0;
   static char   constexpr cCompactDoorStart = 'A' - cCompactOffset;
   static char   constexpr cCompactDoorEnd   = cCompactDoorStart + 'Z' - 'A' + 1;
@@ -141,8 +103,8 @@ private:
   std::unordered_map<char, Coordinates>                               mLocations;
   std::array<std::multimap<char, size_t>, cMatrixSize>                mDistances;
   std::array<std::array<std::vector<char>, cMatrixSize>, cMatrixSize> mVisitedLetters;
-  BoolArray                                                           mDoors;
-  std::array<std::vector<char>, cMatrixSize>                          mLocks;
+  std::array<bool, cMatrixSize>                                       mKeys;
+  std::array<bool, cMatrixSize>                                       mDoors;
 
 public:
   Labyrinth(std::ifstream &aIn) {
@@ -168,19 +130,9 @@ public:
       else {
         if(input == cStart) {
           foundStart = true;
-          input = cCompactStart;
         }
         else {
           mStartX += (foundStart ? 0 : 1);
-          if(input == cWall) {
-            input = cCompactWall;
-          }
-          else if(input == cCorridor) {
-            input = cCompactCorridor;
-          }
-          else {
-            input -= cCompactOffset;
-          }
         }
         mMap.back().push_back(input);
       }
@@ -193,6 +145,12 @@ public:
     while(mMap.back().size() <= 1u) {
       mMap.pop_back();
     }
+/*for(auto &line : mMap) {
+std::cout << ch;
+  }
+std::cout << '\n';
+}
+std::cout << 'x' << mStartX << 'y' << mStartY << '\n';*/
   }
 
   void buildDistanceMap() {
@@ -216,7 +174,7 @@ public:
       else { // nothing to do
       }
       char what = mMap[here.getY()][here.getX()];
-      if(what != cCompactCorridor) {
+      if(what != cCorridor) {
         mLocations[what] = here;
         ++alias;
       }
@@ -226,7 +184,7 @@ public:
       ++distance;
       for(int i = 0u; i < cDirCount; ++i) {
         Coordinates look = here + i;
-        if(mMap[look.getY()][look.getX()] != cCompactWall && mDistanceMap[look.getY()][look.getX()] == std::numeric_limits<size_t>::max()) {
+        if(mMap[look.getY()][look.getX()] != cWall && mDistanceMap[look.getY()][look.getX()] == std::numeric_limits<size_t>::max()) {
           toVisit.push_back(look);
           distances.push_back(distance);
         }
@@ -234,16 +192,20 @@ public:
         }
       }
     }
+/*for(auto &i : mLocations) {
+  std::cout << i.first << " x: " << i.second.getX() << ' ' << " y: " << i.second.getY() << ' ' << mDistanceMap[i.second.getY()][i.second.getX()] << '\n';
+}*/
   }
 
   void buildDistanceMatrix() {
+    std::fill(mKeys.begin(), mKeys.end(), false);
     std::fill(mDoors.begin(), mDoors.end(), false);
     for(auto &i : mLocations) {
-      char compactX = i.first; // to
-      addToLock(compactX);      
-      mDoors[compactX] = (compactX >= cCompactDoorStart && compactX < cCompactDoorEnd);
+      char shiftedI = i.first - cCompactOffset;
+      mKeys[shiftedI] = (shiftedI >= cCompactKeyStart);
+      mDoors[shiftedI] = (shiftedI >= cCompactDoorStart && shiftedI < cCompactDoorEnd);
       for(auto &j : mLocations) {
-        char compactY = j.first; // from
+        char shiftedJ = j.first - cCompactOffset;
         std::deque<char> visitedForward;
         std::deque<char> visitedBackward;
         Coordinates locI = i.second;
@@ -251,35 +213,33 @@ public:
         size_t headI = gatherHead(locI, mDistanceMap[locJ.getY()][locJ.getX()], visitedForward);
         size_t headJ = gatherHead(locJ, mDistanceMap[locI.getY()][locI.getX()], visitedBackward);
         size_t distance = headI + headJ + gatherTogether(locI, locJ, visitedForward, visitedBackward);
+        char compactX = j.first - cCompactOffset;  // to
+        char compactY = i.first - cCompactOffset;  // from
         mDistances[compactY].emplace(distance, compactX);
                                                // from      to
         auto &visitedLetters = mVisitedLetters[compactY][compactX];
         visitedLetters.reserve(visitedForward.size() + visitedBackward.size());
-        std::for_each(visitedForward.begin(), visitedForward.end(), [&visitedLetters, compactX, compactY](auto i){
-          if(i != compactX && i != compactY && i != cCompactStart) {
+        std::for_each(visitedForward.begin(), visitedForward.end(), [&visitedLetters, shiftedI, shiftedJ](auto i){
+          if(i != shiftedI && i != shiftedJ) {
             visitedLetters.push_back(i);
           }
           else { // nothing to do
           }
         });
-        std::for_each(visitedBackward.rbegin(), visitedBackward.rend(), [&visitedLetters, compactX, compactY](auto i){
-          if(i != compactX && i != compactY && i != cCompactStart) {
+        std::for_each(visitedBackward.rbegin(), visitedBackward.rend(), [&visitedLetters, shiftedI, shiftedJ](auto i){
+          if(i != shiftedI && i != shiftedJ) {
             visitedLetters.push_back(i);
           }
           else { // nothing to do
           }
         });
+/*std::cout << i.first << ':' << j.first << ' ' << distance << ':' << visited.size() << ' ';
+for(auto &i : mVisitedLetters[compactY][compactX]) {
+  std::cout << static_cast<char>(64+i);
+}
+std::cout << '\n';*/
       }
     }
-/*for(char i = 0; i < 64; ++i) {
-  if(mDoors[i]) {
-    std::cout << (char)(i + 64) << ':';
-    for(auto j : mLocks[i]) {
-      std::cout << (char)(j + 64);
-    }
-    std::cout << '\n';
-  }
-}*/
   }
 
   size_t calculateShortestPath() {
@@ -290,10 +250,9 @@ public:
     auto &bottom = stack[0u];
     bottom.previous = cCompactStart;
     bottom.lengthSoFar = 0u;
-    std::fill(bottom.was.begin(), bottom.was.end(), false);
-    std::fill(bottom.choices.begin(), bottom.choices.end(), false);
-    std::fill(bottom.keysCollected.begin(), bottom.keysCollected.end(), false);
-    bottom.update(cCompactStart, mDoors, mLocks);
+    bottom.choices = mKeys;
+    std::fill(bottom.visited.begin(), bottom.visited.end(), false);
+    bottom.visited[cCompactStart] = true;
     bottom.next = mDistances[cCompactStart].begin();
     while(bottom.next != mDistances[cCompactStart].end()) {
       auto &current = stack[pointer];
@@ -326,28 +285,31 @@ std::cout << '\n';
       else {
         char prePrevious = current.previous;
         char previous = current.next->second;
-//        do {
-          current.next++;
-  //      } while(current.next != mDistances[current.previous].end() && !current.choices[current.next->second]);
+        current.next++;
         ++pointer;
         auto &next = stack[pointer];
         next.previous = previous;
         next.lengthSoFar = newLength;
         next.next = mDistances[previous].begin();
-        next.was = current.was;
         next.choices = current.choices;
-        next.keysCollected = current.keysCollected;
-        next.update(previous, mDoors, mLocks);
-        for(auto &i : mVisitedLetters[previous][prePrevious]) {
-          if(!next.was[i] && ((i < cCompactDoorEnd && !next.keysCollected[i + cCompactDoor2key]) || !next.update(i, mDoors, mLocks))) { // stuck resolving this path, go further
-            --pointer;
-            current.next++;
-            ++iterations;
-            break;
-          }
-          else { // nothing to do
+        next.visited = current.visited;
+        next.visited[previous] = true;
+        next.choices[previous] = false;
+        for(auto &i : mVisitedLetters[prePrevious][previous]) {
+          next.visited[i] = (next.visited[i] || next.choices[i]);
+          next.choices[i] = false;
+          if(i >= cCompactKeyStart) {
+            char door = i - cCompactDoor2key;
+            next.choices[door] = mDoors[door] & !next.visited[door];
           }
         }
+        if(previous >= cCompactKeyStart) {
+          char door = previous - cCompactDoor2key;
+          next.choices[door] = mDoors[door];
+        }
+        else { // nothing to do
+        }
+        
       }
     }
 std::cout << "iterations: " << iterations << '\n';
@@ -355,19 +317,6 @@ std::cout << "iterations: " << iterations << '\n';
   }
 
 private:
-  void addToLock(char const aWhat) {
-    auto here = mLocations[aWhat];
-    std::deque<char> path;
-    gatherHead(here, cCompactStart, path);
-    path.push_back(cCompactStart);
-    auto found = std::find_if(path.begin(), path.end(), [](auto i) {
-      return ((i == cCompactStart) || (i >= cCompactDoorStart && i < cCompactDoorEnd));
-    });
-    if(aWhat != *found) {
-      mLocks[*found].push_back(aWhat);
-    }
-  }
-
   size_t gatherHead(Coordinates &aHead, size_t const aOtherDistance, std::deque<char> &aVisited) const {
     size_t result = 0u;
     size_t now = mDistanceMap[aHead.getY()][aHead.getX()];
@@ -405,15 +354,13 @@ private:
     }
     aHead = look;
     char what = mMap[aHead.getY()][aHead.getX()];
-    if(what != cCompactCorridor) {
-      aVisited.push_back(what);
+    if(what != cCorridor) {
+      aVisited.push_back(what - cCompactOffset);
     }
     else { // nothing to do
     }
   }
 };
-  
-char constexpr Labyrinth::cCompactStart;
 
 int main(int const argc, char **argv) {
   try {

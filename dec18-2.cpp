@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <unordered_map>
 
-// Could be very efficient, finishes all the examples, but fails on the real input.
+// Computes the real challange without the trick with theoretical flaws used on Reddit.
 
 class Coordinates final {
 private:

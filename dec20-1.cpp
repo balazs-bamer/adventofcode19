@@ -87,27 +87,14 @@ struct std::hash<Coordinates> {
 
 class Labyrinth final {
 private:
-  static char     constexpr cCompactOffset    = '@';
-  static char     constexpr cCompactCorridor  = '^';
-  static char     constexpr cCompactWall      = '[';
-  static char     constexpr cCompactStart     =  0;
-  static char     constexpr cCompactDoorStart = 'A' - cCompactOffset;
-  static char     constexpr cCompactDoorEnd   = cCompactDoorStart + 'Z' - 'A' + 1;
-  static char     constexpr cCompactKeyStart  = 'a' - cCompactOffset;
-  static char     constexpr cCompactKeyEnd    = cCompactKeyStart + 'z' - 'a' + 1;
-  static char     constexpr cCompactDoor2key  = 'a' - 'A';
   static char     constexpr cNewLine          = '\n';
-  static char     constexpr cStart            = '@';
   static char     constexpr cCorridor         = '.';
   static char     constexpr cWall             = '#';
   static int      constexpr cDirCount         =  4;
   static size_t   constexpr cInvalidResult    = std::numeric_limits<size_t>::max();
   static size_t   constexpr cMatrixSize       = cCompactOffset;
 
-  int                                                      mStartX  = 0;
-  int                                                      mStartY  = 0;
-  std::deque<std::deque<char>>                             mMap;
-  uint64_t                                                 mKeyMask = 0u;            // available keys
+  std::deque<std::deque<uint16_t>> mMap;
 
 public:
   Labyrinth(std::ifstream &aIn) {

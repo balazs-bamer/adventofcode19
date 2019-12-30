@@ -5,12 +5,15 @@
 #include <chrono>
 #include <limits>
 #include <vector>
+#include <iomanip>
 #include <utility>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
 #include <unordered_map>
+
+// Solves all the examples but way too slow on the real input.
 
 class Coordinates final {
 private:
@@ -84,12 +87,78 @@ struct std::hash<Coordinates> {
   }
 };
   
+class Node {
+public:
+  static size_t constexpr cNumRobots = 4u; 
+
+private:
+  uint32_t mKeys = 0u;
+  std::array<Coordinates, cNumRobots> mPositions;
+
+public:
+  Node() noexcept = default;
+  
+  Node(int const aX, int const aY) noexcept {
+    Coordinates start(aX, aY);
+    for(size_t i = 0u; i < cNumRobots; ++i) {
+      mPositions[i] = start + i;
+      mPositions[i] += (i + 3u) % cNumRobots;
+    }
+  }
+
+  int getX(size_t const aRobot) const noexcept {
+    return mPositions[aRobot].getX();
+  }
+
+  int getY(size_t const aRobot) const noexcept {
+    return mPositions[aRobot].getY();
+  }
+
+  Coordinates const &getPosition(size_t const aRobot) const noexcept {
+    return mPositions[aRobot];
+  }
+
+  uint32_t getKeys() const noexcept {
+    return mKeys;
+  }
+
+  bool operator==(Node const &aOther) const noexcept {
+    return mKeys == aOther.mKeys && mPositions == aOther.mPositions;
+  }
+
+  Node &operator|=(uint32_t const aKey) noexcept {
+    mKeys |= aKey;
+    return *this;
+  }
+
+  void move(size_t const aRobot, int const aDir) noexcept {
+    mPositions[aRobot] += aDir;
+  }
+
+void print() {
+  for(int i = 0; i < 4; ++i)
+    std::cout << mPositions[i].getX() << ':' << mPositions[i].getY() << ' ';
+std::cout << mKeys << '\n';
+}
+};
+
+template<>
+struct std::hash<Node> {
+  size_t operator()(Node const &aKey) const {
+    size_t result = std::hash<uint32_t>{}(aKey.getKeys());
+    for(size_t i = 0u; i < Node::cNumRobots; ++i) {
+      result ^= (std::hash<Coordinates>{}(aKey.getPosition(i)) << (i + 1u));
+    }
+    return result;
+  }
+};
 
 class Labyrinth final {
 private:
+  static size_t   constexpr cProgressInterval = 100000u;
   static char     constexpr cCompactOffset    = '@';
-  static char     constexpr cCompactCorridor  = '^';
-  static char     constexpr cCompactWall      = '[';
+  static char     constexpr cCompactCorridor  = '^' - cCompactOffset;
+  static char     constexpr cCompactWall      = '[' - cCompactOffset;
   static char     constexpr cCompactStart     =  0;
   static char     constexpr cCompactDoorStart = 'A' - cCompactOffset;
   static char     constexpr cCompactDoorEnd   = cCompactDoorStart + 'Z' - 'A' + 1;
@@ -107,7 +176,7 @@ private:
   int                                                      mStartX  = 0;
   int                                                      mStartY  = 0;
   std::deque<std::deque<char>>                             mMap;
-  uint64_t                                                 mKeyMask = 0u;            // available keys
+  uint32_t                                                 mKeyMask = 0u;            // available keys
 
 public:
   Labyrinth(std::ifstream &aIn) {
@@ -146,7 +215,7 @@ public:
           else {
             input -= cCompactOffset;
             if(input >= cCompactKeyStart) {
-              mKeyMask |= static_cast<uint64_t>(1u) << (input - cCompactKeyStart);
+              mKeyMask |= static_cast<uint32_t>(1u) << (input - cCompactKeyStart);
             }
             else { // nothing to do
             }
@@ -163,26 +232,38 @@ public:
     while(mMap.back().size() <= 1u) {
       mMap.pop_back();
     }
+    mMap[mStartY][mStartX] = cCompactWall;
+    mMap[mStartY + 1][mStartX] = cCompactWall;
+    mMap[mStartY - 1][mStartX] = cCompactWall;
+    mMap[mStartY][mStartX + 1] = cCompactWall;
+    mMap[mStartY][mStartX - 1] = cCompactWall;
   }
 
   size_t calculateShortestPath() {
     size_t iterations = 0u;
     size_t result = cInvalidResult;
-    uint64_t lastNode;
-    Coordinates start(mStartX, mStartY);
-    std::unordered_map<uint64_t, size_t> costs; // assume cInvalidResult for nodes not present here
-    std::multimap<size_t, uint64_t> queue;
-    std::unordered_map<uint64_t, uint64_t> previous;
-    uint64_t startValue = static_cast<uint64_t>(start);
-    costs[startValue] = 0u;
-    queue.insert(std::pair<size_t, uint64_t>(0u, startValue));
-    previous[startValue] = std::numeric_limits<uint64_t>::max();
+    Node lastNode;
+    Node start(mStartX, mStartY);
+    std::unordered_map<Node, size_t> costs; // assume cInvalidResult for nodes not present here
+    std::multimap<size_t, Node> queue;
+    costs[start] = 0u;
+    queue.insert(std::pair<size_t, Node>(0u, start));
+std::cout << mKeyMask << '\n';
     while(!queue.empty()) {
       auto smallest = queue.begin();
       size_t smallestCost = smallest->first;
-      uint64_t smallestNode = smallest->second;
+      Node smallestNode = smallest->second;
       queue.erase(smallest);
-      if((smallestNode & mKeyMask) == mKeyMask) {
+      uint32_t keys = smallestNode.getKeys();
+      if(iterations % cProgressInterval == 0u) {
+        for(uint32_t i = 0u; i < 32u; ++i) {
+          std::cout << (((keys << i) & (1u << 31u)) == 0u ? '0' : '1');
+        }
+        std::cout << ' ' << iterations << '\n';
+      }
+      else { // nothing to do
+      }
+      if(keys == mKeyMask) {
         if(smallestCost < result) {
           result = smallestCost;
           lastNode = smallestNode;
@@ -192,48 +273,38 @@ public:
       }
       else { // nothing to do
       }
-      Coordinates smallestCoord(smallestNode);
-      for(size_t i = 0; i < cDirCount; ++i) {
-        Coordinates otherCoord = smallestCoord + i;
-        char found = mMap[otherCoord.getY()][otherCoord.getX()];
-        if(found != cCompactWall && (found >= cCompactKeyStart || found == cCompactStart || (smallestNode & (1u << (found - cCompactDoorStart))) != 0u)) {
-          uint64_t otherNode = (static_cast<uint64_t>(otherCoord) | (smallestNode & mKeyMask) | (found >= cCompactKeyStart ? 1u << (found - cCompactKeyStart) : 0u));
-          auto other = costs.find(otherNode);
-          size_t otherCost = (other == costs.end() ? cInvalidResult : other->second);
-          size_t newCost = smallestCost + 1u;
-          if(newCost < otherCost) {
-            if(other == costs.end()) {
-              costs[otherNode] = newCost;
+      for(size_t robot = 0u; robot < Node::cNumRobots; ++robot) {
+        for(size_t i = 0u; i < cDirCount; ++i) {
+          Node otherNode = smallestNode;
+          otherNode.move(robot, i);
+          char found = mMap[otherNode.getY(robot)][otherNode.getX(robot)];
+          if(found == cCompactCorridor || (found >= cCompactKeyStart && found < cCompactKeyEnd)
+           || (found >= cCompactDoorStart && found < cCompactDoorEnd && ((smallestNode.getKeys() & (1u << (found - cCompactDoorStart))) != 0u))) {
+            otherNode |= ((found >= cCompactKeyStart && found < cCompactKeyEnd) ? 1u << (found - cCompactKeyStart) : 0u);
+            auto other = costs.find(otherNode);
+            size_t otherCost = (other == costs.end() ? cInvalidResult : other->second);
+            size_t newCost = smallestCost + 1u;
+            if(newCost < otherCost) {
+              if(other == costs.end()) {
+                costs[otherNode] = newCost;
+              }
+              else {
+                other->second = newCost;
+              }
+              queue.insert(std::pair<size_t, Node>(newCost, otherNode));
             }
-            else {
-              other->second = newCost;
+            else { // nothing to do
             }
-            queue.insert(std::pair<size_t, uint64_t>(newCost, otherNode));
-            previous[otherNode] = smallestNode;
           }
           else { // nothing to do
           }
-        }
-        else { // nothing to do
         }
       }
       ++iterations;
     }
 std::cout << "iter: " << iterations << '\n';
-    for(uint64_t node = lastNode; node != std::numeric_limits<uint64_t>::max(); node = previous[node]) {
-      Coordinates coord = node;
-      char found = mMap[coord.getY()][coord.getX()];
-      if(found != cCompactCorridor) {
-        std::cout << (char)(cCompactOffset + found) << ' ';
-      }
-      else { // nothing to do
-      }
-    }
-std::cout << '\n';
     return result;
   }
-
-private:
 };
   
 size_t constexpr Labyrinth::cInvalidResult;

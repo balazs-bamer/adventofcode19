@@ -152,7 +152,8 @@ private:
   static char     constexpr cStartLabel[]     = "AA";
   static char     constexpr cTargetLabel[]    = "ZZ";
   static size_t   constexpr cMargin           =   4u;
-  static size_t   constexpr cDepthLimit       = 99999u;
+  static size_t   constexpr cDepthLimit       = 9999999u;
+  static size_t   constexpr cCostLimit        = 9999999u;
 
   std::deque<std::deque<uint8_t>>          mRawMap;
   std::vector<std::vector<uint16_t>>       mWarpMap;
@@ -165,6 +166,7 @@ private:
   uint8_t                                  mPortTarget;
   std::vector<std::vector<size_t>>         mPort2portCost;
   std::unordered_map<uint8_t, uint8_t>     mPort2itsPair;
+  size_t                                   mStepEstimate;
 
 public:
   Labyrinth(std::ifstream &aIn) {
@@ -299,7 +301,7 @@ public:
           mPort2portCost[source][dest] = calculateShortestPath(sourceLoc, mPortCoordinates[dest]);
           if(mPort2label[source] == mPort2label[dest]) {
             mPort2itsPair[source] = dest;
-std::cout << source << '-' << dest << '\n';
+//std::cout << source << '-' << dest << '\n';
           }
           else { // nothing to do
           }
@@ -314,28 +316,73 @@ std::cout << source << '-' << dest << '\n';
       else {
         mPortsInside[source] = true;
       }
-std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[source] << ' ' << sourceLoc.getX() << ':' << sourceLoc.getY() <<'\n';
+//std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[source] << ' ' << sourceLoc.getX() << ':' << sourceLoc.getY() <<'\n';
     }
+  }
+
+  void estimateStep() {
+    mStepEstimate = cInvalidResult;
+    size_t med = mWarpMap.size() / 2u;
+    size_t start = 0;
+    while(mWarpMap[med][start] != cWarpCorridor && mWarpMap[med][start] != cWarpWall) {
+      ++start;
+    }
+    size_t end = start;
+    while(mWarpMap[med][end] == cWarpCorridor || mWarpMap[med][end] == cWarpWall) {
+      ++end;
+    }
+    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
+    start = end;
+    while(mWarpMap[med][start] != cWarpCorridor && mWarpMap[med][start] != cWarpWall) {
+      ++start;
+    }
+    end = start;
+    while(mWarpMap[med][end] == cWarpCorridor || mWarpMap[med][end] == cWarpWall) {
+      ++end;
+    }
+    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
+    med = mWarpMap.front().size() / 2u;
+    start = 0;
+    while(mWarpMap[start][med] != cWarpCorridor && mWarpMap[start][med] != cWarpWall) {
+      ++start;
+    }
+    end = start;
+    while(mWarpMap[end][med] == cWarpCorridor || mWarpMap[end][med] == cWarpWall) {
+      ++end;
+    }
+    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
+    start = end;
+    while(mWarpMap[start][med] != cWarpCorridor && mWarpMap[start][med] != cWarpWall) {
+      ++start;
+    }
+    end = start;
+    while(mWarpMap[end][med] == cWarpCorridor || mWarpMap[end][med] == cWarpWall) {
+      ++end;
+    }
+    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
+    std::cout << "step estimate: " << mStepEstimate << '\n';
   }
 
   size_t calculateShortestPath() {
     size_t iterations = 0u;
     size_t result = cInvalidResult;
-    std::unordered_map<Node, size_t> costs; // assume cInvalidResult for nodes not present here
+    std::unordered_map<Node, size_t> wholeCosts; // assume cInvalidResult for nodes not present here
+    std::unordered_map<Node, size_t> realCosts; // assume cInvalidResult for nodes not present here
     std::multimap<size_t, Node> queue;
     Node start(mPortStart);
-    costs[start] = 0u;
+    wholeCosts[start] = 0u;
+    realCosts[start] = 0u;
     queue.insert(std::pair<size_t, Node>(0u, start));
     while(!queue.empty()) {
       auto smallest = queue.begin();
-      size_t smallestCost = smallest->first;
       Node smallestNode = smallest->second;
+      size_t smallestCost = realCosts[smallestNode];
 //std::cout << smallestNode.getLevel() << ' ' << smallestCost << '\n';
       queue.erase(smallest);
-      if(smallestNode.getChosenPort() == mPortTarget || smallestCost >= 999999u) {
+      if(smallestNode.getChosenPort() == mPortTarget) {
         if(smallestCost < result) {
           result = smallestCost;
-std::cout << "perhaps " << result - 1u << std::endl;
+std::cout << "perhaps " << result - 1u << " at " << iterations << std::endl;
         }
         else { // nothing to do
         }
@@ -365,8 +412,8 @@ std::cout << "perhaps " << result - 1u << std::endl;
           newPort = pair->second;
         }
         otherNode.move(newPort, mPortsOutside[newPort]);
-        auto other = costs.find(otherNode);
-        size_t otherCost = (other == costs.end() ? cInvalidResult : other->second);
+        auto other = realCosts.find(otherNode);
+        size_t otherRealCost = (other == realCosts.end() ? cInvalidResult : other->second);
         size_t costIncrement = nextPorts[i];
         if(costIncrement == cInvalidResult) {
 //std::cout << "inv: " << i << ' ' << newPort << '\n';
@@ -374,15 +421,17 @@ std::cout << "perhaps " << result - 1u << std::endl;
         }
         else { // nothing t odo
         }
-        size_t newCost = smallestCost + costIncrement + 1u;
-        if(newCost < otherCost) {
-          if(other == costs.end()) {
-            costs[otherNode] = newCost;
+        size_t newRealCost = smallestCost + costIncrement + 1u;
+        if(newRealCost < otherRealCost && newRealCost < cCostLimit) {
+          if(other == wholeCosts.end()) {
+            realCosts[otherNode] = newRealCost;
           }
           else {
-            other->second = newCost;
+            other->second = newRealCost;
           }
-          queue.insert(std::pair<size_t, Node>(newCost, otherNode));
+          size_t newWholeCost = newRealCost + mStepEstimate * otherNode.getLevel();
+          wholeCosts[otherNode] = newWholeCost;
+          queue.insert(std::pair<size_t, Node>(newWholeCost, otherNode));
 //std::cout << smallestNode.getLevel() << '-'<<static_cast<uint16_t>(smallestNode.getChosenPort()) << '-' << mPort2label[smallestNode.getChosenPort()] << ' ' << " <[" << nextPorts[i] << "]> " << otherNode.getLevel() << '-'<<static_cast<uint16_t>(otherNode.getChosenPort()) << '-' << mPort2label[otherNode.getChosenPort()] <<  ' ' <<'\n';
         }
         else { // nothing to do
@@ -399,9 +448,9 @@ private:
     size_t iterations = 0u;
     size_t result = cInvalidResult;
     Coordinates lastNode;
-    std::unordered_map<Coordinates, size_t> costs; // assume cInvalidResult for nodes not present here
+    std::unordered_map<Coordinates, size_t> wholeCosts; // assume cInvalidResult for nodes not present here
     std::multimap<size_t, Coordinates> queue;
-    costs[aStart] = 0u;
+    wholeCosts[aStart] = 0u;
     queue.insert(std::pair<size_t, Coordinates>(0u, aStart));
     while(!queue.empty()) {
       auto smallest = queue.begin();
@@ -435,12 +484,12 @@ private:
         }
         else { // nothing to do
         }
-        auto other = costs.find(otherNode);
-        size_t otherCost = (other == costs.end() ? cInvalidResult : other->second);
+        auto other = wholeCosts.find(otherNode);
+        size_t otherCost = (other == wholeCosts.end() ? cInvalidResult : other->second);
         size_t newCost = smallestCost + 1u;
         if(newCost < otherCost) {
-          if(other == costs.end()) {
-            costs[otherNode] = newCost;
+          if(other == wholeCosts.end()) {
+            wholeCosts[otherNode] = newCost;
           }
           else {
             other->second = newCost;
@@ -473,6 +522,7 @@ int main(int const argc, char **argv) {
     auto begin = std::chrono::high_resolution_clock::now();
     labyrinth.warp();
     labyrinth.calculateShortestPathesBetweenPorts();
+    labyrinth.estimateStep();
     size_t length = labyrinth.calculateShortestPath();
     auto end = std::chrono::high_resolution_clock::now();
     auto timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin);

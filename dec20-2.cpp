@@ -84,7 +84,6 @@ private:
   static constexpr uint64_t    cShiftLevel = 16u;
   uint8_t                      mChosenPort;
   size_t                       mLevel;
- // std::unordered_set<uint64_t> mUsedInnerPaths; // from << cShift | to
 
 public:
   Node(uint8_t aPort) noexcept : mChosenPort(aPort), mLevel(0u) {
@@ -101,15 +100,6 @@ public:
   bool isTopLevel() const noexcept {
     return mLevel == 0u;
   }
-
-/*  bool isPossible(uint8_t const aExit) const noexcept {
-    return mUsedInnerPaths.find(mLevel << cShiftLevel | static_cast<uint64_t>(mChosenPort) << cShiftFrom | aExit) == mUsedInnerPaths.end();
-  }
-
-  Node &operator+=(uint8_t const aPort) {
-//    mUsedInnerPaths.insert(mLevel << cShiftLevel | static_cast<uint64_t>(mChosenPort) << cShiftFrom | aPort);
-    return *this;
-  }*/
 
   bool operator==(Node const aOther) const noexcept {
     return mChosenPort == aOther.mChosenPort && mLevel == aOther.mLevel;
@@ -152,7 +142,7 @@ private:
   static char     constexpr cStartLabel[]     = "AA";
   static char     constexpr cTargetLabel[]    = "ZZ";
   static size_t   constexpr cMargin           =   4u;
-  static size_t   constexpr cDepthLimit       = 9999999u;
+  static size_t   constexpr cDepthLimit       = 99u;
   static size_t   constexpr cCostLimit        = 9999999u;
 
   std::deque<std::deque<uint8_t>>          mRawMap;
@@ -161,7 +151,6 @@ private:
   std::deque<Coordinates>                  mPortCoordinates;
   std::unordered_map<uint8_t, std::string> mPort2label;
   std::vector<bool>                        mPortsOutside;    
-  std::vector<bool>                        mPortsInside;
   uint8_t                                  mPortStart; 
   uint8_t                                  mPortTarget;
   std::vector<std::vector<size_t>>         mPort2portCost;
@@ -283,14 +272,13 @@ public:
     }
   }
   
-  size_t calculateShortestPathesBetweenPorts() {
+  void calculateShortestPathesBetweenPorts() {
     size_t size = mPortCoordinates.size();
     {
       std::vector<size_t> line(size, cInvalidResult);
       mPort2portCost = std::vector<std::vector<size_t>>(size, line);
     }
     mPortsOutside = std::vector<bool>(size, false);
-    mPortsInside = std::vector<bool>(size, false);
     for(size_t source = 0u; source < size; ++source) {
       Coordinates sourceLoc = mPortCoordinates[source];
       for(size_t dest = 0u; dest < size; ++dest) {
@@ -305,6 +293,7 @@ public:
           }
           else { // nothing to do
           }
+std::cout << source << '-' << mPort2label[source] << "   " << dest << '-' << mPort2label[dest] << "   " << mPort2portCost[source][dest] << '\n';
         }
       }
       if(sourceLoc.getX() <= cMargin || 
@@ -313,53 +302,25 @@ public:
          mRawMap.size() - sourceLoc.getY() <= cMargin) {
         mPortsOutside[source] = true;
       }
-      else {
-        mPortsInside[source] = true;
+      else { // nothing to do
       }
 //std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[source] << ' ' << sourceLoc.getX() << ':' << sourceLoc.getY() <<'\n';
     }
   }
 
   void estimateStep() {
+    size_t size = mPortCoordinates.size();
     mStepEstimate = cInvalidResult;
-    size_t med = mWarpMap.size() / 2u;
-    size_t start = 0;
-    while(mWarpMap[med][start] != cWarpCorridor && mWarpMap[med][start] != cWarpWall) {
-      ++start;
+    for(size_t source = 0u; source < size; ++source) {
+      Coordinates sourceLoc = mPortCoordinates[source];
+      for(size_t dest = 0u; dest < size; ++dest) {
+        if(source != dest && (mPortsOutside[source] ^ mPortsOutside[dest])) {
+          mStepEstimate = std::min<size_t>(mStepEstimate, mPort2portCost[source][dest]);
+        }
+        else { // nothing to do
+        }
+      }
     }
-    size_t end = start;
-    while(mWarpMap[med][end] == cWarpCorridor || mWarpMap[med][end] == cWarpWall) {
-      ++end;
-    }
-    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
-    start = end;
-    while(mWarpMap[med][start] != cWarpCorridor && mWarpMap[med][start] != cWarpWall) {
-      ++start;
-    }
-    end = start;
-    while(mWarpMap[med][end] == cWarpCorridor || mWarpMap[med][end] == cWarpWall) {
-      ++end;
-    }
-    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
-    med = mWarpMap.front().size() / 2u;
-    start = 0;
-    while(mWarpMap[start][med] != cWarpCorridor && mWarpMap[start][med] != cWarpWall) {
-      ++start;
-    }
-    end = start;
-    while(mWarpMap[end][med] == cWarpCorridor || mWarpMap[end][med] == cWarpWall) {
-      ++end;
-    }
-    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
-    start = end;
-    while(mWarpMap[start][med] != cWarpCorridor && mWarpMap[start][med] != cWarpWall) {
-      ++start;
-    }
-    end = start;
-    while(mWarpMap[end][med] == cWarpCorridor || mWarpMap[end][med] == cWarpWall) {
-      ++end;
-    }
-    mStepEstimate = std::min<size_t>(mStepEstimate, end - start);
     std::cout << "step estimate: " << mStepEstimate << '\n';
   }
 
@@ -370,7 +331,7 @@ public:
     std::unordered_map<Node, size_t> realCosts; // assume cInvalidResult for nodes not present here
     std::multimap<size_t, Node> queue;
     Node start(mPortStart);
-    wholeCosts[start] = 0u;
+    wholeCosts[start] = mStepEstimate;
     realCosts[start] = 0u;
     queue.insert(std::pair<size_t, Node>(0u, start));
     while(!queue.empty()) {
@@ -379,38 +340,18 @@ public:
       size_t smallestCost = realCosts[smallestNode];
 //std::cout << smallestNode.getLevel() << ' ' << smallestCost << '\n';
       queue.erase(smallest);
-      if(smallestNode.getChosenPort() == mPortTarget) {
-        if(smallestCost < result) {
-          result = smallestCost;
-std::cout << "perhaps " << result - 1u << " at " << iterations << std::endl;
-        }
-        else { // nothing to do
-        }
-        continue;
-      }
-      else { // nothing to do
-      }
       auto &nextPorts = mPort2portCost[smallestNode.getChosenPort()];
+//std::cout << "line: " << mPort2label[smallestNode.getChosenPort()] << ' ' << smallestNode.getLevel() << '\n';
       for(uint8_t i = 0; i < nextPorts.size(); ++i) {        // i is the other port to be chosen on this level. It may lead to a lower or an upper level.
-        auto pair = mPort2itsPair.find(i);
-        if( smallestNode.getLevel() >= cDepthLimit || //!smallestNode.isPossible(i) ||
-           (smallestNode.isTopLevel() && mPortsOutside[i] && i != mPortStart && i != mPortTarget) ||   // on top level only start and target live on the outside
-          (!smallestNode.isTopLevel() && mPortsOutside[i] && (i == mPortStart || i == mPortTarget))/* || // on lower levels start and target are stuck
-            smallestNode.getChosenPort() == i ||
-            (pair != mPort2itsPair.end() && smallestNode.getChosenPort() == pair->second)*/) {
+        if((smallestNode.isTopLevel() && mPortsOutside[i] && i != mPortTarget) ||   // on top level only target live on the outside
+          (!smallestNode.isTopLevel() && mPortsOutside[i] && (i == mPortStart || i == mPortTarget))) { // on lower levels start and target are stuck
+//std::cout << "cont: " << mPort2label[i] << ' ' << smallestNode.getLevel() << '\n';
           continue;
         }
         else { // nothing t odo
         }
         Node otherNode = smallestNode;
-//        otherNode += i;
-        uint8_t newPort;
-        if(pair == mPort2itsPair.end()) {
-          newPort = i;
-        }
-        else {
-          newPort = pair->second;
-        }
+        uint8_t newPort = mPort2itsPair[i];
         otherNode.move(newPort, mPortsOutside[newPort]);
         auto other = realCosts.find(otherNode);
         size_t otherRealCost = (other == realCosts.end() ? cInvalidResult : other->second);
@@ -422,19 +363,32 @@ std::cout << "perhaps " << result - 1u << " at " << iterations << std::endl;
         else { // nothing t odo
         }
         size_t newRealCost = smallestCost + costIncrement + 1u;
-        if(newRealCost < otherRealCost && newRealCost < cCostLimit) {
-          if(other == wholeCosts.end()) {
-            realCosts[otherNode] = newRealCost;
+//std::cout << "exam: " << mPort2label[i] << ' ' << smallestNode.getLevel() << ' ' << static_cast<int>(i) << '-' << static_cast<int>(mPortTarget) << ' ' << newRealCost << '-' << result <<'\n';
+        if(i == mPortTarget) {
+          if(newRealCost < result) {
+            result = newRealCost;
+  //std::cout << "perhaps " << (result - 1u) << " at " << iterations << std::endl;
           }
-          else {
-            other->second = newRealCost;
+          else { // nothing to do
           }
-          size_t newWholeCost = newRealCost + mStepEstimate * otherNode.getLevel();
-          wholeCosts[otherNode] = newWholeCost;
-          queue.insert(std::pair<size_t, Node>(newWholeCost, otherNode));
-//std::cout << smallestNode.getLevel() << '-'<<static_cast<uint16_t>(smallestNode.getChosenPort()) << '-' << mPort2label[smallestNode.getChosenPort()] << ' ' << " <[" << nextPorts[i] << "]> " << otherNode.getLevel() << '-'<<static_cast<uint16_t>(otherNode.getChosenPort()) << '-' << mPort2label[otherNode.getChosenPort()] <<  ' ' <<'\n';
+          continue;
         }
-        else { // nothing to do
+        else {
+//std::cout << "nrc: " << newRealCost << " orc: " << otherRealCost << '\n';
+          if(newRealCost < otherRealCost && newRealCost < cCostLimit && otherNode.getLevel() < cDepthLimit) {
+            if(other == realCosts.end()) {
+              realCosts[otherNode] = newRealCost;
+            }
+            else {
+              other->second = newRealCost;
+            }
+            size_t newWholeCost = newRealCost + mStepEstimate * otherNode.getLevel();
+            wholeCosts[otherNode] = newWholeCost;
+            queue.insert(std::pair<size_t, Node>(newWholeCost, otherNode));
+  std::cout << smallestNode.getLevel() << '-'<<static_cast<uint16_t>(smallestNode.getChosenPort()) << '-' << mPort2label[smallestNode.getChosenPort()] << ' ' << " <[" << nextPorts[i] << "]> " << otherNode.getLevel() << '-'<<static_cast<uint16_t>(otherNode.getChosenPort()) << '-' << mPort2label[otherNode.getChosenPort()] <<  ' ' <<'\n';
+          }
+          else { // nothing to do
+          }
         }
       }
       ++iterations;

@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <unordered_map>
+#include <unordered_set>
 
 // I assume there are no adjacent teleport labels.
 
@@ -79,14 +80,17 @@ struct std::hash<Coordinates> {
 
 class Node final {
 private:
-  uint16_t mChosenPort;
-  size_t   mLevel;
+  static constexpr uint64_t    cShiftFrom  =  8u;
+  static constexpr uint64_t    cShiftLevel = 16u;
+  uint8_t                      mChosenPort;
+  size_t                       mLevel;
+ // std::unordered_set<uint64_t> mUsedInnerPaths; // from << cShift | to
 
 public:
-  Node(uint16_t aPort) noexcept : mChosenPort(aPort), mLevel(0u) {
+  Node(uint8_t aPort) noexcept : mChosenPort(aPort), mLevel(0u) {
   }
 
-  uint16_t getChosenPort() const noexcept {
+  uint8_t getChosenPort() const noexcept {
     return mChosenPort;
   } 
 
@@ -98,13 +102,22 @@ public:
     return mLevel == 0u;
   }
 
+/*  bool isPossible(uint8_t const aExit) const noexcept {
+    return mUsedInnerPaths.find(mLevel << cShiftLevel | static_cast<uint64_t>(mChosenPort) << cShiftFrom | aExit) == mUsedInnerPaths.end();
+  }
+
+  Node &operator+=(uint8_t const aPort) {
+//    mUsedInnerPaths.insert(mLevel << cShiftLevel | static_cast<uint64_t>(mChosenPort) << cShiftFrom | aPort);
+    return *this;
+  }*/
+
   bool operator==(Node const aOther) const noexcept {
     return mChosenPort == aOther.mChosenPort && mLevel == aOther.mLevel;
   }
 
   Node &operator=(Node const &aOther) noexcept = default;
 
-  void move(uint16_t const aPort, bool const aFromOutside) noexcept {
+  void move(uint8_t const aPort, bool const aFromOutside) noexcept {
     mChosenPort = aPort;
     if(aFromOutside) {
       ++mLevel;
@@ -118,7 +131,7 @@ public:
 template<>
 struct std::hash<Node> {
   size_t operator()(Node const &aKey) const {
-    return std::hash<uint16_t>{}(aKey.getChosenPort()) ^
+    return std::hash<uint8_t>{}(aKey.getChosenPort()) ^
           (std::hash<size_t>{}(aKey.getLevel()) << 1u);
   }
 };
@@ -139,20 +152,19 @@ private:
   static char     constexpr cStartLabel[]     = "AA";
   static char     constexpr cTargetLabel[]    = "ZZ";
   static size_t   constexpr cMargin           =   4u;
-  static size_t   constexpr cDepthLimit       = 9999u;
+  static size_t   constexpr cDepthLimit       = 99999u;
 
-  std::deque<std::deque<uint8_t>>        mRawMap;
-  std::vector<std::vector<uint16_t>>     mWarpMap;
-  uint16_t                               mNextPort = cFirstPort;
-  std::deque<Coordinates>                mPortCoordinates;
-  std::unordered_map<uint16_t, std::string> mPort2label;
-  std::vector<bool>                      mPortsOutside;    
-  std::vector<bool>                      mPortsInside;
-  uint64_t                               mPortMask = 0u;  // without AA and ZZ
-  uint16_t                               mPortStart; 
-  uint16_t                               mPortTarget;
-  std::vector<std::vector<size_t>>       mPort2portCost;
-  std::unordered_map<uint16_t, uint16_t> mPort2itsPair;
+  std::deque<std::deque<uint8_t>>          mRawMap;
+  std::vector<std::vector<uint16_t>>       mWarpMap;
+  uint8_t                                  mNextPort = cFirstPort;
+  std::deque<Coordinates>                  mPortCoordinates;
+  std::unordered_map<uint8_t, std::string> mPort2label;
+  std::vector<bool>                        mPortsOutside;    
+  std::vector<bool>                        mPortsInside;
+  uint8_t                                  mPortStart; 
+  uint8_t                                  mPortTarget;
+  std::vector<std::vector<size_t>>         mPort2portCost;
+  std::unordered_map<uint8_t, uint8_t>     mPort2itsPair;
 
 public:
   Labyrinth(std::ifstream &aIn) {
@@ -251,8 +263,7 @@ public:
             else if(label == cTargetLabel) {
               mPortTarget = mNextPort;
             }
-            else {
-              mPortMask |= 1u << mNextPort;
+            else { // nothing to do
             }
             mPort2label[mNextPort] = label;
             mPortCoordinates.push_back(corridorLoc);
@@ -319,10 +330,12 @@ std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[s
       auto smallest = queue.begin();
       size_t smallestCost = smallest->first;
       Node smallestNode = smallest->second;
+//std::cout << smallestNode.getLevel() << ' ' << smallestCost << '\n';
       queue.erase(smallest);
-      if(smallestNode.getChosenPort() == mPortTarget) {
+      if(smallestNode.getChosenPort() == mPortTarget || smallestCost >= 999999u) {
         if(smallestCost < result) {
           result = smallestCost;
+std::cout << "perhaps " << result - 1u << std::endl;
         }
         else { // nothing to do
         }
@@ -331,9 +344,9 @@ std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[s
       else { // nothing to do
       }
       auto &nextPorts = mPort2portCost[smallestNode.getChosenPort()];
-      for(size_t i = 0; i < mPort2portCost.size(); ++i) {        // i is the other port to be chosen on this level. It may lead to a lower or an upper level.
+      for(uint8_t i = 0; i < nextPorts.size(); ++i) {        // i is the other port to be chosen on this level. It may lead to a lower or an upper level.
         auto pair = mPort2itsPair.find(i);
-        if(smallestNode.getLevel() >= cDepthLimit ||
+        if( smallestNode.getLevel() >= cDepthLimit || //!smallestNode.isPossible(i) ||
            (smallestNode.isTopLevel() && mPortsOutside[i] && i != mPortStart && i != mPortTarget) ||   // on top level only start and target live on the outside
           (!smallestNode.isTopLevel() && mPortsOutside[i] && (i == mPortStart || i == mPortTarget))/* || // on lower levels start and target are stuck
             smallestNode.getChosenPort() == i ||
@@ -343,7 +356,8 @@ std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[s
         else { // nothing t odo
         }
         Node otherNode = smallestNode;
-        uint16_t newPort;
+//        otherNode += i;
+        uint8_t newPort;
         if(pair == mPort2itsPair.end()) {
           newPort = i;
         }
@@ -369,7 +383,7 @@ std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[s
             other->second = newCost;
           }
           queue.insert(std::pair<size_t, Node>(newCost, otherNode));
-//std::cout << smallestNode.getLevel() << '-'<<smallestNode.getChosenPort() << '-' << mPort2label[smallestNode.getChosenPort()] << ' ' << " <[" << nextPorts[i] << "]> " << otherNode.getLevel() << '-'<<otherNode.getChosenPort() << '-' << mPort2label[otherNode.getChosenPort()] <<  ' ' <<'\n';
+//std::cout << smallestNode.getLevel() << '-'<<static_cast<uint16_t>(smallestNode.getChosenPort()) << '-' << mPort2label[smallestNode.getChosenPort()] << ' ' << " <[" << nextPorts[i] << "]> " << otherNode.getLevel() << '-'<<static_cast<uint16_t>(otherNode.getChosenPort()) << '-' << mPort2label[otherNode.getChosenPort()] <<  ' ' <<'\n';
         }
         else { // nothing to do
         }

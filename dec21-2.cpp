@@ -258,17 +258,23 @@ enum class Opcode : uint8_t {
   cNot     = 1u,
   cOr      = 2u,
   cAnd     = 3u,
-  cWalk    = 4u
+  cWalk    = 4u,
+  cRun     = 5u
 };
 
 enum class Operand : uint8_t {
-  cA           = 0u,
-  cB           = 1u,
-  cC           = 2u,
-  cD           = 3u,
-  cSensorCount = 4u,
-  cT           = 4u,
-  cJ           = 5u
+  cA           =  0u,
+  cB           =  1u,
+  cC           =  2u,
+  cD           =  3u,
+  cE           =  4u,
+  cF           =  5u,
+  cG           =  6u,
+  cH           =  7u,
+  cI           =  8u,
+  cSensorCount =  9u,
+  cT           =  9u,
+  cJ           = 10u
 };
 
 class Instruction final {
@@ -276,15 +282,18 @@ class Instruction final {
 private:
   static constexpr size_t cOpcodeLength = 5u;
   static constexpr size_t cOperandLength = 5u;
-  static constexpr char   cOpcodes[][cOpcodeLength] = { "ILL", "NOT", "OR", "AND", "WALK" };
-  static constexpr char   cOperands[][cOperandLength] = { "A", "B", "C", "D", "T", "J" };
+  static constexpr char   cOpcodes[][cOpcodeLength] = { "ILL", "NOT", "OR", "AND", "WALK", "RUN" };
+  static constexpr char   cOperands[][cOperandLength] = { "A", "B", "C", "D", "E", "F", "G", "H", "I", "T", "J" };
 
   Opcode  mOpcode = Opcode::cWalk;
   Operand mSource;
   Operand mDest;
 
 public:
-  Instruction() noexcept = default;   
+  Instruction() noexcept = default;
+
+  Instruction(bool const aRun) noexcept : mOpcode(aRun ? Opcode::cRun : Opcode::cWalk) {
+  }  
 
   Instruction(Opcode const aOpcode, Operand const aSrc, Operand const aDest) noexcept : mOpcode(aOpcode), mSource(aSrc), mDest(aDest) {
   }
@@ -294,7 +303,7 @@ public:
 
 std::ostream& operator<<(std::ostream &aOut, Instruction const &aWhat) {
   aOut << aWhat.cOpcodes[static_cast<size_t>(aWhat.mOpcode)];
-  if(aWhat.mOpcode != Opcode::cWalk) {
+  if(aWhat.mOpcode != Opcode::cWalk && aWhat.mOpcode != Opcode::cRun) {
     aOut << ' ' << aWhat.cOperands[static_cast<size_t>(aWhat.mSource)] << ' ' << aWhat.cOperands[static_cast<size_t>(aWhat.mDest)];
   }
   else { // nothing to do
@@ -319,11 +328,14 @@ public:
   size_t compute() {
     size_t result = 0u;
     std::ostringstream out;
-    out << Instruction(Opcode::cNot, Operand::cA, Operand::cT);
-    out << Instruction(Opcode::cNot, Operand::cC, Operand::cJ);
+    out << Instruction(Opcode::cNot, Operand::cB, Operand::cJ);
+    out << Instruction(Opcode::cNot, Operand::cC, Operand::cT);
+    out << Instruction(Opcode::cOr,  Operand::cT, Operand::cJ);
     out << Instruction(Opcode::cAnd, Operand::cD, Operand::cJ);
-    out << Instruction(Opcode::cOr, Operand::cT, Operand::cJ);
-    out << Instruction();
+    out << Instruction(Opcode::cAnd, Operand::cH, Operand::cJ);
+    out << Instruction(Opcode::cNot, Operand::cA, Operand::cT);
+    out << Instruction(Opcode::cOr,  Operand::cT, Operand::cJ);
+    out << Instruction(true);
     mComputer.start();
     mComputer.run();
     while(mComputer.hasOutput()) {

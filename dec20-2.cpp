@@ -143,7 +143,7 @@ private:
   static char     constexpr cTargetLabel[]    = "ZZ";
   static size_t   constexpr cMargin           =   4u;
   static size_t   constexpr cDepthLimit       = 99u;
-  static size_t   constexpr cCostLimit        = 9999999u;
+  static size_t   constexpr cCostLimit        = 99999u;
 
   std::deque<std::deque<uint8_t>>          mRawMap;
   std::vector<std::vector<uint16_t>>       mWarpMap;
@@ -192,7 +192,7 @@ public:
 
   void warp() {
     {
-      std::vector<uint16_t> line(mRawMap.front().size(), cSpace);
+      std::vector<uint16_t> line(mRawMap.front().size(), cWarpSpace);
       mWarpMap = std::vector<std::vector<uint16_t>>(mRawMap.size(), line);
     }
     for(size_t y = 0u; y < mRawMap.size(); ++y) {
@@ -247,7 +247,7 @@ public:
               otherHalfLoc = foundLoc;
             }
           }
-          if(mWarpMap[otherHalfLoc.getY()][otherHalfLoc.getX()] == cSpace && mWarpMap[labelLoc.getY()][labelLoc.getX()] == cSpace) {
+          if(mWarpMap[otherHalfLoc.getY()][otherHalfLoc.getX()] == cWarpSpace && mWarpMap[labelLoc.getY()][labelLoc.getX()] == cWarpSpace) {
             if(label == cStartLabel) {
               mPortStart = mNextPort;
             }
@@ -289,11 +289,9 @@ public:
           mPort2portCost[source][dest] = calculateShortestPath(sourceLoc, mPortCoordinates[dest]);
           if(mPort2label[source] == mPort2label[dest]) {
             mPort2itsPair[source] = dest;
-//std::cout << source << '-' << dest << '\n';
           }
           else { // nothing to do
           }
-std::cout << source << '-' << mPort2label[source] << "   " << dest << '-' << mPort2label[dest] << "   " << mPort2portCost[source][dest] << '\n';
         }
       }
       if(sourceLoc.getX() <= cMargin || 
@@ -304,7 +302,6 @@ std::cout << source << '-' << mPort2label[source] << "   " << dest << '-' << mPo
       }
       else { // nothing to do
       }
-//std::cout << source << ' ' << mPort2label[source] << " out: " << mPortsOutside[source] << ' ' << sourceLoc.getX() << ':' << sourceLoc.getY() <<'\n';
     }
   }
 
@@ -338,14 +335,11 @@ std::cout << source << '-' << mPort2label[source] << "   " << dest << '-' << mPo
       auto smallest = queue.begin();
       Node smallestNode = smallest->second;
       size_t smallestCost = realCosts[smallestNode];
-//std::cout << smallestNode.getLevel() << ' ' << smallestCost << '\n';
       queue.erase(smallest);
       auto &nextPorts = mPort2portCost[smallestNode.getChosenPort()];
-//std::cout << "line: " << mPort2label[smallestNode.getChosenPort()] << ' ' << smallestNode.getLevel() << '\n';
       for(uint8_t i = 0; i < nextPorts.size(); ++i) {        // i is the other port to be chosen on this level. It may lead to a lower or an upper level.
         if((smallestNode.isTopLevel() && mPortsOutside[i] && i != mPortTarget) ||   // on top level only target live on the outside
           (!smallestNode.isTopLevel() && mPortsOutside[i] && (i == mPortStart || i == mPortTarget))) { // on lower levels start and target are stuck
-//std::cout << "cont: " << mPort2label[i] << ' ' << smallestNode.getLevel() << '\n';
           continue;
         }
         else { // nothing t odo
@@ -357,24 +351,20 @@ std::cout << source << '-' << mPort2label[source] << "   " << dest << '-' << mPo
         size_t otherRealCost = (other == realCosts.end() ? cInvalidResult : other->second);
         size_t costIncrement = nextPorts[i];
         if(costIncrement == cInvalidResult) {
-//std::cout << "inv: " << i << ' ' << newPort << '\n';
           continue;
         }
         else { // nothing t odo
         }
         size_t newRealCost = smallestCost + costIncrement + 1u;
-//std::cout << "exam: " << mPort2label[i] << ' ' << smallestNode.getLevel() << ' ' << static_cast<int>(i) << '-' << static_cast<int>(mPortTarget) << ' ' << newRealCost << '-' << result <<'\n';
         if(i == mPortTarget) {
           if(newRealCost < result) {
             result = newRealCost;
-  //std::cout << "perhaps " << (result - 1u) << " at " << iterations << std::endl;
           }
           else { // nothing to do
           }
           continue;
         }
         else {
-//std::cout << "nrc: " << newRealCost << " orc: " << otherRealCost << '\n';
           if(newRealCost < otherRealCost && newRealCost < cCostLimit && otherNode.getLevel() < cDepthLimit) {
             if(other == realCosts.end()) {
               realCosts[otherNode] = newRealCost;
@@ -385,7 +375,6 @@ std::cout << source << '-' << mPort2label[source] << "   " << dest << '-' << mPo
             size_t newWholeCost = newRealCost + mStepEstimate * otherNode.getLevel();
             wholeCosts[otherNode] = newWholeCost;
             queue.insert(std::pair<size_t, Node>(newWholeCost, otherNode));
-  std::cout << smallestNode.getLevel() << '-'<<static_cast<uint16_t>(smallestNode.getChosenPort()) << '-' << mPort2label[smallestNode.getChosenPort()] << ' ' << " <[" << nextPorts[i] << "]> " << otherNode.getLevel() << '-'<<static_cast<uint16_t>(otherNode.getChosenPort()) << '-' << mPort2label[otherNode.getChosenPort()] <<  ' ' <<'\n';
           }
           else { // nothing to do
           }

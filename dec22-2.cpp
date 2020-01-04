@@ -14,17 +14,29 @@ class Deck final {
 private:
   InfInt mSize;
   InfInt mPlaceInQuestion;
+  InfInt mFinalPlaceInQuestion;
+  InfInt mIndependentFactor;
+  InfInt mDependentFactor;
 
 public:
-  Deck(int64_t const aSize, int64_t const aPlaceInQuestion) noexcept : mSize(aSize), mPlaceInQuestion(aPlaceInQuestion) {
+  Deck(int64_t const aSize, int64_t const aPlaceInQuestion) noexcept 
+  : mSize(aSize)
+  , mPlaceInQuestion(aPlaceInQuestion)
+  , mFinalPlaceInQuestion(aPlaceInQuestion)
+  , mIndependentFactor(0u)
+  , mDependentFactor(1u) {
   }
 
   void reverse() {
     mPlaceInQuestion = mSize - 1 - mPlaceInQuestion;
+    mIndependentFactor = mSize - 1 - mIndependentFactor;
+    mDependentFactor = -mDependentFactor;
   }
 
   void cut(int64_t const aCut) {
-    mPlaceInQuestion = (mPlaceInQuestion + limit(aCut)) % mSize;
+    InfInt limited = limit(aCut);
+    mPlaceInQuestion = (mPlaceInQuestion + limited) % mSize;
+    mIndependentFactor += limited;
   }
 
   void deal(int64_t const aIncrement) {
@@ -38,20 +50,54 @@ public:
       tmp = tPrev - q * tNow;
       tPrev = tNow; tNow = tmp;
     }
-    mPlaceInQuestion = (mPlaceInQuestion * limit(tPrev)) % mSize;
+    InfInt limited = limit(tPrev);
+    mPlaceInQuestion = (mPlaceInQuestion * limited) % mSize;
+    mIndependentFactor *= limited;
+    mDependentFactor *= limited;
   }
 
   InfInt operator*() const noexcept {
     return mPlaceInQuestion;
   }
 
+  InfInt operator!() const noexcept {
+    return (mIndependentFactor + mDependentFactor * mFinalPlaceInQuestion) % mSize;
+  }
+
+  InfInt getResult(int64_t const aShuffleCount) const noexcept {
+    InfInt veryBig = power(mDependentFactor, aShuffleCount);
+    InfInt tmp = mFinalPlaceInQuestion * veryBig;
+    tmp += mIndependentFactor * (veryBig - 1) / (mDependentFactor - 1);
+    return tmp % mSize;
+  }
+
 private:
-  InfInt limit(InfInt const aValue) const noexcept {
+  InfInt limit(InfInt const &aValue) const noexcept {
     InfInt real = aValue;
     while(real < 0) { // It won't get extreme negative values, so remains efficient.
       real += mSize;
     }
     return real % mSize;
+  }
+
+  InfInt power(InfInt const &aBase, InfInt const &aExponent) const noexcept {
+    InfInt power2 = aBase;
+    InfInt work = aExponent;
+    InfInt result = 1;
+    while(work > 0) {
+auto begin = std::chrono::high_resolution_clock::now();
+      if(work % 2 > 0) {
+        result *= power2;
+      }
+      else { // nothing to do
+      }
+      work /= 2;
+      power2 *= power2;
+auto end = std::chrono::high_resolution_clock::now();
+auto timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin);
+std::cout << work.numberOfDigits() << ' ' << power2.numberOfDigits() << ' ' << timeSpan.count() << '\n';
+    }
+    return result;
   }
 };
 
@@ -106,8 +152,9 @@ constexpr char Step::cPrefixDeal[];
 
 class Shuffle final {
 private:
-  static constexpr int64_t cSpaceDeckSize   = 119315717514047;
+  static constexpr int64_t cSpaceDeckSize   = 10007; //119315717514047;
   static constexpr int64_t cIndexInQuestion =            2020;
+  static constexpr int64_t cShuffleCount    = 101741582076661;
 
   std::list<Step> mSteps;
 
@@ -127,7 +174,8 @@ public:
 
   InfInt compute() const {
     Deck deck(cSpaceDeckSize, cIndexInQuestion);
-std::cout << *deck << "\n\n";
+std::cout << *deck << '\n';
+std::cout << !deck << '\n';
     std::for_each(mSteps.rbegin(), mSteps.rend(), [&deck](auto i){
       if(i.sort == Step::Sort::cReverse) {
         deck.reverse();
@@ -141,10 +189,10 @@ std::cout << *deck << "\n\n";
       }
       else { // nothing to do
       }
-i.print();
-std::cout << *deck <<  "\n\n";
     });
-    return *deck;
+std::cout << *deck << '\n';
+std::cout << !deck << '\n';
+    return deck.getResult(cShuffleCount);
   }
 };
 

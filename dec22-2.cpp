@@ -40,20 +40,10 @@ public:
   }
 
   void deal(int64_t const aIncrement) {
-    InfInt rNow = limit(aIncrement);
-    InfInt rPrev = mSize;
-    InfInt tNow = 1, tPrev = 0;
-    while(rNow != 0) {
-      InfInt q = rPrev / rNow;
-      InfInt tmp = rPrev - q * rNow;
-      rPrev = rNow; rNow = tmp;
-      tmp = tPrev - q * tNow;
-      tPrev = tNow; tNow = tmp;
-    }
-    InfInt limited = limit(tPrev);
-    mPlaceInQuestion = (mPlaceInQuestion * limited) % mSize;
-    mIndependentFactor *= limited;
-    mDependentFactor *= limited;
+    InfInt inv = inverse(aIncrement);
+    mPlaceInQuestion = (mPlaceInQuestion * inv) % mSize;
+    mIndependentFactor *= inv;
+    mDependentFactor *= inv;
   }
 
   InfInt operator*() const noexcept {
@@ -65,9 +55,9 @@ public:
   }
 
   InfInt getResult(int64_t const aShuffleCount) const noexcept {
-    InfInt veryBig = power(mDependentFactor, aShuffleCount);
-    InfInt tmp = mFinalPlaceInQuestion * veryBig;
-    tmp += mIndependentFactor * (veryBig - 1) / (mDependentFactor - 1);
+    InfInt veryBig = power(mDependentFactor % mSize, aShuffleCount);
+    InfInt tmp = (mFinalPlaceInQuestion % mSize) * veryBig;
+    tmp += (mIndependentFactor % mSize) * (veryBig - 1) * inverse(mDependentFactor - 1);
     return tmp % mSize;
   }
 
@@ -85,19 +75,29 @@ private:
     InfInt work = aExponent;
     InfInt result = 1;
     while(work > 0) {
-auto begin = std::chrono::high_resolution_clock::now();
       if(work % 2 > 0) {
-        result *= power2;
+        result = (result * power2) % mSize;
       }
       else { // nothing to do
       }
       work /= 2;
-      power2 *= power2;
-auto end = std::chrono::high_resolution_clock::now();
-auto timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin);
-std::cout << work.numberOfDigits() << ' ' << power2.numberOfDigits() << ' ' << timeSpan.count() << '\n';
+      power2 = (power2 * power2) % mSize;
     }
     return result;
+  }
+  
+  InfInt inverse(InfInt const &aValue) const noexcept {
+    InfInt rNow = limit(aValue);
+    InfInt rPrev = mSize;
+    InfInt tNow = 1, tPrev = 0;
+    while(rNow != 0) {
+      InfInt q = rPrev / rNow;
+      InfInt tmp = rPrev - q * rNow;
+      rPrev = rNow; rNow = tmp;
+      tmp = tPrev - q * tNow;
+      tPrev = tNow; tNow = tmp;
+    }
+    return limit(tPrev);
   }
 };
 
@@ -152,7 +152,7 @@ constexpr char Step::cPrefixDeal[];
 
 class Shuffle final {
 private:
-  static constexpr int64_t cSpaceDeckSize   = 10007; //119315717514047;
+  static constexpr int64_t cSpaceDeckSize   = 119315717514047;
   static constexpr int64_t cIndexInQuestion =            2020;
   static constexpr int64_t cShuffleCount    = 101741582076661;
 
@@ -174,8 +174,6 @@ public:
 
   InfInt compute() const {
     Deck deck(cSpaceDeckSize, cIndexInQuestion);
-std::cout << *deck << '\n';
-std::cout << !deck << '\n';
     std::for_each(mSteps.rbegin(), mSteps.rend(), [&deck](auto i){
       if(i.sort == Step::Sort::cReverse) {
         deck.reverse();
@@ -190,8 +188,6 @@ std::cout << !deck << '\n';
       else { // nothing to do
       }
     });
-std::cout << *deck << '\n';
-std::cout << !deck << '\n';
     return deck.getResult(cShuffleCount);
   }
 };

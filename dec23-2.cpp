@@ -291,7 +291,10 @@ public:
 
   int64_t compute() {
     bool found = false;
+    Message nat;
     int64_t result;
+    bool natSent = false;
+    int64_t lastNatY;
     while(!found) {
       for(size_t i = 0; i < cComputerCount; ++i) {
         Intcode<Int> &computer = mComputers[i];
@@ -305,17 +308,18 @@ public:
             mQueues[address].push_back(message);
           }
           else {
-            found = true;
-            result = message.y;
+            nat = message;
           }
         }
       }
+      bool anyGot = false;
       for(size_t i = 0; i < cComputerCount; ++i) {
         Intcode<Int> &computer = mComputers[i];
         std::list<Message> &queue = mQueues[i];
         bool got = false;
         while(!found && !queue.empty()) {
           got = true;
+          anyGot = true;
           Message message = queue.front();
           queue.pop_front();
           computer.input(message.x);
@@ -326,6 +330,17 @@ public:
         }
         else { // nothing to do
         }
+      }
+      if(!anyGot) {
+        mQueues[0].push_back(nat);
+        if(natSent && lastNatY == nat.y) {
+          result = lastNatY;
+          found = true;
+        }
+        lastNatY = nat.y;
+        natSent = true;
+      }
+      else { // nothing to do
       }
     }
     return result;

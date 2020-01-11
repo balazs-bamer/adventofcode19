@@ -29,7 +29,6 @@ private:
   static constexpr uint64_t cBugMask          = 0x0001555554555555ull;
   static constexpr uint64_t cCenterNorthMask  = 0x0000000000004000ull;
   static constexpr uint64_t cCenterWestMask   = 0x0000000000400000ull;
-  static constexpr uint64_t cCenterMask       = 0x0000000001000000ull;
   static constexpr uint64_t cCenterEastMask   = 0x0000000004000000ull;
   static constexpr uint64_t cCenterSouthMask  = 0x0000000400000000ull;
   static constexpr uint64_t cSideNorthMask    = 0x0000000000000155ull;
@@ -91,9 +90,7 @@ public:
     std::array<std::list<uint64_t>, 2u> levels;
     size_t current = 0u;
     levels[current].push_back(mInitialPopulation);
-// print("init ", mInitialPopulation);
     for(size_t i = 0; i < cMinutes; ++i) {
-//std::cout << "------------------ MINUTE: " << i << '\n';
       levels[1u - current].clear();
       levels[current].push_front(cInitNeighbour);
       levels[current].push_back(cInitNeighbour);
@@ -115,7 +112,6 @@ public:
         else { // nothing to do
         }
         levels[1u - current].push_back(merge(*level, sum, correctionSum));
-//print(" res ", merge(*level, sum, correctionSum));
       }
       current = 1u - current;
     }
@@ -130,15 +126,14 @@ private:
   uint64_t getOwnSum(uint64_t const aPopulation) const noexcept {
     uint64_t result;
     if(aPopulation > 0u) {
-      uint64_t population = aPopulation & ~cCenterMask;
-      uint64_t sum = population << cVerticalShift;
-      sum += (population >> cVerticalShift);
-      sum += (population & cLeftMask) << 2u;
-      uint64_t right = (population & cRightMask) >> 2u;
-      uint64_t upperBits = (sum >> cBugShift) & cBugMask;
-      uint64_t lowerBits = sum & cBugMask;
+      uint64_t sum = aPopulation << cVerticalShift;
+      sum += (aPopulation >> cVerticalShift);
+      sum += (aPopulation & cLeftMask) << cBitsPerPlace;
+      uint64_t right = (aPopulation & cRightMask) >> cBitsPerPlace;
+      uint64_t upperBits = sum >> cBugShift;
+      uint64_t lowerBits = sum;
       uint64_t already3 = upperBits & lowerBits;
-      right &= ~already3;
+      right &= ~already3 & cBugMask;
       result = sum + right;
     }
     else {
@@ -208,25 +203,6 @@ private:
     }
     return result;
   }
-  
-  void print(char const * const aPrefix, uint64_t const aValue) const {
-if(aValue == 0u) return;
-    for(uint64_t i = 0; i < cSize * cSize; ++i) {
-      if(i % cSize == 0u) {
-        std::cout << aPrefix;
-      }
-      else { // ntd
-      }
-      std::cout //<< ((aValue >> (2u * i + 1u) & 1u) > 0u ? '#' : ':')
-                << ((aValue >> (2u * i) & 1u) > 0u ? '#' : ':');// << ' ';
-      if(i % cSize == cSize - 1u) {
-        std::cout << '\n';
-      }
-      else { // ntd
-      }
-    }
-std::cout << "- - - -\n";
-  }
 };
 
 constexpr uint64_t Population:: cInitNeighbour;
@@ -240,7 +216,6 @@ int main(int const argc, char **argv) {
     }
     else { // nothing to do
     }
-std::cout << argv[1] << std::endl;
     std::ifstream in(argv[1]);
     Population population(in);
     auto begin = std::chrono::high_resolution_clock::now();

@@ -126,6 +126,10 @@ public:
     }
     return line;
   }
+
+  void skipOutput() {
+    mOutputs.clear();
+  }
   
   bool hasOutput() {
     return !mOutputs.empty();
@@ -305,9 +309,10 @@ struct Room final {
   static constexpr char      cNotVisited[]               = "not visited";
   static constexpr char      cDirNames[][cDirNameLength] = { "north", "east", "south", "west", "" };
 
-  std::array<std::string, cDirCount> doors;     // wall, not visited or [room name]
+  std::array<std::string, cDirCount> doors;        // wall, not visited or [room name]
   std::unordered_set<std::string>    objects;
-  std::string                        cameFrom;  // direction name
+  std::string                        cameFrom;     // direction name
+  std::string                        sensitiveDir;
 
   Room(std::string const &aPreviousName, std::string const &aDir2reachHere) noexcept : doors({cWall, cWall, cWall, cWall}) {
     size_t opposite = static_cast<size_t>(cOppositeDir[find(aDir2reachHere)]);
@@ -373,6 +378,18 @@ constexpr char Room::cNowhere[];
 constexpr char Room::cNotVisited[];
 constexpr char Room::cDirNames[][Room::cDirNameLength];
 
+struct RoomResult final {
+  std::string name;
+  Room        room;
+  bool        rejected;
+
+  RoomResult(std::string const &aName, Room const &aRoom, bool const aRejected) noexcept
+  : name(aName)
+  , room(aRoom)
+  , rejected(aRejected) {
+  }
+};
+
 class Adventure final {
 private:
 /*  enum class CommandType : uint8_t {
@@ -381,31 +398,31 @@ private:
     cDrop = 2u
   };*/
   static constexpr char   cMagicPossiblePrefix[] = "- ";
-//  static constexpr char   cMagicNamePrefix[]     = "==";
-//  static constexpr char   cMagicTakePrefix[]     = "You take the ";
-//  static constexpr char   cMagicDropPrefix[]     = "You drop the ";
-//  static constexpr char   cMagicDoors[]          = "Doors here lead:";
   static constexpr char   cMagicItems[]          = "Items here:";
   static constexpr char   cMagicCommand[]        = "Command?";
   static constexpr char   cSafe[]                = "safe";
   static constexpr char   cCommandTake[]         = "take ";
+  static constexpr char   cCommandDrop[]         = "drop ";
   static constexpr char   cRejected[]            = "rejected";
+  static constexpr char   cCheckpointName[]      = "== Security Checkpoint ==";
+  static constexpr char   cSensitiveName[]      = "== Pressure-Sensitive Floor ==";
  
   Intcode<Int>                                 mComputer;
   std::unordered_map<std::string, Room>        mMap;
   std::unordered_map<std::string, std::string> mObjects;
+  std::list<std::string>                       mSurveyPath;
 
 public:
   Adventure(std::ifstream &aIn) : mComputer(aIn) {
     mComputer.start();
   }
 
-  int64_t search() {
-    int64_t result;
+  void gatherObjects() {
+    bool foundSecurity = false;
     mComputer.run();
-    std::pair<std::string, Room> start = handleRoom(Room::cNowhere, Room::cDirNames[Room::cDirCount]);
-    auto here = mMap.insert(start).first; // insert: first is iterator, second is bool
-                                          //   here: first is room name, second is room
+    RoomResult start = handleRoom(Room::cNowhere, Room::cDirNames[Room::cDirCount]);
+    std::pair<std::string, Room> toInsert(start.name, start.room);
+    auto here = mMap.insert(toInsert).first; // insert: first is iterator, second is bool
     mObjects["giant electromagnet"] = "cheat"; // this causes problem only after move, which would require a more complicated logic
     mObjects["infinite loop"] = "cheat";
     while(true) {
@@ -416,38 +433,107 @@ public:
       }
       else { // nothing to do
       }
-std::cout << "? " << direction << std::endl;
+      if(!foundSecurity) {
+        mSurveyPath.push_back(direction);
+      }
+      else { // nothing to do
+      }
       mComputer.input(direction);
       mComputer.run();
-      std::pair<std::string, Room> roomCandidate = handleRoom(here->first, direction);
-      here->second.setDoor(roomCandidate.first, direction);
-      if(roomCandidate.first != cRejected) {
-        auto next = mMap.find(roomCandidate.first);
+      RoomResult roomCandidate = handleRoom(here->first, direction);
+      here->second.setDoor(roomCandidate.name, direction);
+      if(roomCandidate.name == cCheckpointName) {
+        foundSecurity = true;
+      }
+      else { // nothing to do
+      }
+      if(!roomCandidate.rejected) {
+        auto next = mMap.find(roomCandidate.name);
         if(next == mMap.end()) {
-          here = mMap.insert(roomCandidate).first;
+          std::pair<std::string, Room> toInsert(roomCandidate.name, roomCandidate.room);
+          here = mMap.insert(toInsert).first;
         }
         else {
           here = next;
         }
       }
+      else {
+        here->second.sensitiveDir = direction;
+      }
+    }
+  }
+
+  std::string obtainCode() {
+    std::string result;
+    std::vector<bool> hand(mObjects.size(), true);
+    std::vector<std::string> objects;
+    objects.reserve(mObjects.size());
+    for(auto &i : mObjects) {
+      if(i.second == cSafe) {
+        objects.push_back(i.first);
+      }
       else { // nothing to do
       }
     }
-    return 0;
+    for(auto &dir : mSurveyPath) {
+      mComputer.input(dir);
+      mComputer.run();
+      mComputer.skipOutput();
+    }
+    auto here = mMap.find(cCheckpointName);
+    uint64_t bitCount = objects.size();
+    uint64_t grayEnd = 0xaaaaaaaaaaaaaaaaull >> (bitCount % 2ull);
+    uint64_t grayMask = (1ull << bitCount) - 1ull;
+    grayEnd &= grayMask;
+    for(uint64_t i = grayEnd + 1ull; i != grayEnd; i = (i + 1ull) & grayMask) {
+      uint64_t gray = i ^ (i >> 1ull);
+      std::string command;
+      uint64_t bit;
+      for(bit = 0u; bit < bitCount; ++bit) {
+        if(hand[bit] && (gray & 1ull << bit) == 0ull) {
+          command = cCommandDrop;
+          hand[bit] = false;
+          break;
+        }
+        else
+        if(!hand[bit] && (gray & 1ull << bit) != 0ull) {
+          command = cCommandTake;
+          hand[bit] = true;
+          break;
+        }
+        else { // nothing to do
+        }
+      }
+      command += objects[bit];
+      mComputer.input(command);
+      mComputer.run();
+      mComputer.skipOutput();
+      mComputer.input(here->second.sensitiveDir);
+      mComputer.run();
+      std::string lastLine;
+      while(mComputer.hasOutput()) {
+        lastLine = mComputer.outputLine();
+      }
+      if(lastLine != cMagicCommand) {
+        result = lastLine;
+        break;
+      }
+      else { // nothing to do
+      }
+    }
+    return result;
   }
 
 private:
-  std::pair<std::string, Room> handleRoom(std::string const &aPreviousName, std::string const &aDir2reachHere) {
+  RoomResult handleRoom(std::string const &aPreviousName, std::string const &aDir2reachHere) {
     std::string line = mComputer.outputLine(); // room name
-    std::pair<std::string, Room> result = std::make_pair(line, Room(aPreviousName, aDir2reachHere));
+    RoomResult result(line, Room(aPreviousName, aDir2reachHere), false);
     line = mComputer.outputLine();             // description
-std::cout << result.first << '\n' << line << '\n';
     line = mComputer.outputLine();             // cMagicDoors
     while(true) {
       line = mComputer.outputLine();
       if(line.find(cMagicPossiblePrefix) == 0u) {
-        result.second.setDoor(line);
-std::cout << line << '\n';
+        result.room.setDoor(line);
       }
       else {
         break;
@@ -457,7 +543,7 @@ std::cout << line << '\n';
       while(true) {
         line = mComputer.outputLine();
         if(line.find(cMagicPossiblePrefix) == 0u) {
-          result.second.objects.insert(line.substr(Room::cPrefixSize));
+          result.room.objects.insert(line.substr(Room::cPrefixSize));
         }
         else {
           break;
@@ -467,7 +553,7 @@ std::cout << line << '\n';
     else { // nothing to do
     }
     if(line != cMagicCommand) {
-      result.first = cRejected;
+      result.rejected = true;
     }
     else { // nothing to do
     }
@@ -486,12 +572,10 @@ std::cout << line << '\n';
         line = risky.outputLine();
         if(line == cMagicCommand) {
           mComputer = risky;
-std::cout << command << '\n';
           mObjects[*i] = cSafe;
           i = aRoom.objects.erase(i);
         }
         else {
-std::cout << "don\'t " << command << '\n';
           mObjects[*i] = line; // danger
           ++i;
         }
@@ -501,21 +585,13 @@ std::cout << "don\'t " << command << '\n';
       }
     }
   }
-
-  void assertPrompt(std::string const &aLine) {
-    if(aLine != cMagicCommand) {
-      throw std::invalid_argument(aLine);
-    }
-    else { // nothing to do
-    }
-  }
 };
 
 int main(int const argc, char **argv) {
   size_t const cChainLength = 5u;
   int const cInitialInput = 0;
 
-//  try {
+  try {
     if(argc == 1) {
       throw std::invalid_argument("Need input filename.");
     }
@@ -523,15 +599,16 @@ int main(int const argc, char **argv) {
     
     Adventure adventure(in);
     auto begin = std::chrono::high_resolution_clock::now();
-    int64_t result = adventure.search();
+    adventure.gatherObjects();
+    std::string result = adventure.obtainCode();
     auto end = std::chrono::high_resolution_clock::now();
     auto timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(end - begin);
     std::cout << "duration: " << timeSpan.count() << '\n';
     std::cout << result << '\n';
- /* }
+  }
   catch(std::exception const &e) {
     std::cerr << "fail: " << e.what() << std::endl;
     return 1;
-  }*/
+  }
   return 0;
 }
